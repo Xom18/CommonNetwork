@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+CommonNetwork/CommonNetwork/x64
+CommonNetwork/CommonNetwork/Debug
+CommonNetwork/CommonNetwork/Release
+CommonNetwork/Debug
+CommonNetwork/Release
+CommonNetwork/x64
+CommonNetwork/.vs
