@@ -1,4 +1,4 @@
-//경고 썡까게 해주는 전처리
+//경고 무시하게 해주는 전처리
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #include <iostream>
