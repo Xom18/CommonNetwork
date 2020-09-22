@@ -170,7 +170,7 @@ void cUDPSocket::stopThread()
 
 	//변수 해제
 	KILL(m_pSendThread);
-	KILL(m_pSendThread);
+	KILL(m_pRecvThread);
 
 	//상태 재설정
 	m_iStatus = eSOCKET_STATUS_IDLE;
