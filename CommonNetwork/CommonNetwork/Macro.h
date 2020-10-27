@@ -1,4 +1,4 @@
 #pragma once
 
-#define KILL(ptr) if(ptr != nullptr) delete ptr; ptr = nullptr		//´ÜÀÏ »èÁ¦ ¼¼¹ÌÄİ·Ğ »©¸ÔÀ¸¸é ¾ÈµÇ°Ô ÀÏºÎ·¯ ¸¶Áö¸·¿¡ ¼¼¹ÌÄİ·Ğ »­
-#define pKILL(ptr) if(ptr != nullptr) delete[] ptr; ptr = nullptr	//¹è¿­ »èÁ¦ ¼¼¹ÌÄİ·Ğ »©¸ÔÀ¸¸é ¾ÈµÇ°Ô ÀÏºÎ·¯ ¸¶Áö¸·¿¡ ¼¼¹ÌÄİ·Ğ »­
+#define KILL(ptr) if(ptr != nullptr) delete ptr; ptr = nullptr		//ë‹¨ì¼ ì‚­ì œ ì„¸ë¯¸ì½œë¡  ë¹¼ë¨¹ìœ¼ë©´ ì•ˆë˜ê²Œ ì¼ë¶€ëŸ¬ ë§ˆì§€ë§‰ì— ì„¸ë¯¸ì½œë¡  ëºŒ
+#define pKILL(ptr) if(ptr != nullptr) delete[] ptr; ptr = nullptr	//ë°°ì—´ ì‚­ì œ ì„¸ë¯¸ì½œë¡  ë¹¼ë¨¹ìœ¼ë©´ ì•ˆë˜ê²Œ ì¼ë¶€ëŸ¬ ë§ˆì§€ë§‰ì— ì„¸ë¯¸ì½œë¡  ëºŒ

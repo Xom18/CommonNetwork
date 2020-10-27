@@ -1,4 +1,4 @@
-//°æ°í ¹«½ÃÇÏ°Ô ÇØÁÖ´Â ÀüÃ³¸®
+//ê²½ê³  ë¬´ì‹œí•˜ê²Œ í•´ì£¼ëŠ” ì „ì²˜ë¦¬
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #include <iostream>
@@ -14,45 +14,94 @@
 #include "AutoMutex.h"
 #include "Packet.h"
 #include "UDPSocket.h"
+#include "TCPSocket.h"
+#include "TCPSocketServer.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
-//¸ŞÀÎ¿¡¼­ µ¹¸®´Â ¿¹Á¦ ÄÚµå
+char IP[] = "127.0.0.1";//IP í…ŒìŠ¤íŠ¸ìš©ìœ¼ë¡œ 127.0.0.1
+
+void TCPTest();
+void UDPTest();
+//ë©”ì¸ì—ì„œ ëŒë¦¬ëŠ” ì˜ˆì œ ì½”ë“œ
 int main(const int argc, const char* argv[])
 {
-	cUDPSocket Server;	//¼­¹ö
-	cUDPSocket Client;	//Å¬¶ó
+	std::string strText;
+	std::cin >> strText;	//í…ìŠ¤íŠ¸ ì…ë ¥
 
-	char IP[] = "127.0.0.1";//IP Å×½ºÆ®¿ëÀ¸·Î 127.0.0.1
+	//QUITì„ ì¹˜ë©´ ìŠ¤ë ˆë“œ ì¢…ë£Œ
+	if(strcmp(strText.c_str(), "TCP") == 0)
+	{
+		TCPTest();
+	}
+	else if(strcmp(strText.c_str(), "UDP") == 0)
+	{
+		UDPTest();
+	}
 
-	Server.beginThread(true);
-	Client.beginThread(false, IP);
 
-	
-	while (true)
+	WSACleanup();
+	ExitProcess(EXIT_SUCCESS);
+}
+
+void TCPTest()
+{
+	cTCPSocketServer TCPServer;	//ì„œë²„
+	cTCPSocket TCPClient;	//í´ë¼
+
+	TCPServer.beginThread();
+//	TCPClient.tryConnectServer(IP);
+
+	while(true)
 	{
 		std::string strText;
-		std::cin >> strText;	//ÅØ½ºÆ® ÀÔ·Â
+		std::cin >> strText;	//í…ìŠ¤íŠ¸ ì…ë ¥
 
-		//QUITÀ» Ä¡¸é ½º·¹µå Á¾·á
-		if (strcmp(strText.c_str(), "QUIT") == 0)
+		//QUITì„ ì¹˜ë©´ ìŠ¤ë ˆë“œ ì¢…ë£Œ
+		if(strcmp(strText.c_str(), "QUIT") == 0)
 		{
-			Server.stopThread();
-			Client.stopThread();
+			TCPServer.stopThread();
+			TCPServer.stopThread();
+
+			break;
+		}
+	}
+}
+
+void UDPTest()
+{
+	cUDPSocket UDPServer;	//ì„œë²„
+	cUDPSocket UDPClient;	//í´ë¼
+
+	UDPServer.beginThread(true);
+	UDPClient.beginThread(false, IP);
+
+
+	while(true)
+	{
+		std::string strText;
+		std::cin >> strText;	//í…ìŠ¤íŠ¸ ì…ë ¥
+
+		//QUITì„ ì¹˜ë©´ ìŠ¤ë ˆë“œ ì¢…ë£Œ
+		if(strcmp(strText.c_str(), "QUIT") == 0)
+		{
+			UDPServer.stopThread();
+			UDPClient.stopThread();
+
 			break;
 		}
 
-		//Àü¼Û
-		Client.pushSend(Client.getSockinfo(), strText.length() + 1, (char*)strText.c_str());
+		//ì „ì†¡
+		UDPClient.pushSend(UDPClient.getSockinfo(), strText.length() + 1, (char*)strText.c_str());
+		
+		Sleep(1000);	//íŒ¨í‚·ì´ ì°ê³ ì˜¤ê¸°ê¹Œì§€ ê¸°ë‹¤ë ¤ì£¼ëŠ” ì‹œê°„ ë„‰ë„‰í•˜ê²Œ 1ì´ˆ
 
-		Sleep(1000);	//ÆĞÅ¶ÀÌ Âï°í¿À±â±îÁö ±â´Ù·ÁÁÖ´Â ½Ã°£ ³Ë³ËÇÏ°Ô 1ÃÊ
-
-		//¼ö½Å¹ŞÀº ÆĞÅ¶ Ã³¸®ÇÏ±â À§ÇÑ Å¥
+		//ìˆ˜ì‹ ë°›ì€ íŒ¨í‚· ì²˜ë¦¬í•˜ê¸° ìœ„í•œ í
 		std::queue<cPacket*> recvQueue;
-		Server.copyRecvQueue(&recvQueue, true);
+		UDPServer.copyRecvQueue(&recvQueue, true);
 
-		//ÆĞÅ¶ Ã³¸®
-		while (!recvQueue.empty())
+		//íŒ¨í‚· ì²˜ë¦¬
+		while(!recvQueue.empty())
 		{
 			cPacket* lpPacket = recvQueue.front();
 			recvQueue.pop();
@@ -60,13 +109,29 @@ int main(const int argc, const char* argv[])
 			char clientIP[256];
 			ZeroMemory(clientIP, sizeof(clientIP));
 			inet_ntop(AF_INET, &lpPacket->m_AddrInfo.sin_addr, clientIP, sizeof(clientIP));
-			printf("%s : %s\n", clientIP, lpPacket->m_pData);
+			printf("[Server]%s : %s\n", clientIP, lpPacket->m_pData);
 
-			//¹İµå½Ã Ã³¸®ÇÑ µÚ ÆĞÅ¶ delete
+			UDPServer.pushSend(&lpPacket->m_AddrInfo, lpPacket->m_iSize, lpPacket->m_pData);
+
+			//ë°˜ë“œì‹œ ì²˜ë¦¬í•œ ë’¤ íŒ¨í‚· delete
+			delete lpPacket;
+		}
+
+		Sleep(1000);	//íŒ¨í‚·ì´ ì°ê³ ì˜¤ê¸°ê¹Œì§€ ê¸°ë‹¤ë ¤ì£¼ëŠ” ì‹œê°„ ë„‰ë„‰í•˜ê²Œ 1ì´ˆ
+
+		UDPClient.copyRecvQueue(&recvQueue, true);
+		while(!recvQueue.empty())
+		{
+			cPacket* lpPacket = recvQueue.front();
+			recvQueue.pop();
+
+			char clientIP[256];
+			ZeroMemory(clientIP, sizeof(clientIP));
+			inet_ntop(AF_INET, &lpPacket->m_AddrInfo.sin_addr, clientIP, sizeof(clientIP));
+			printf("[Client]%s : %s\n", clientIP, lpPacket->m_pData);
+
+			//ë°˜ë“œì‹œ ì²˜ë¦¬í•œ ë’¤ íŒ¨í‚· delete
 			delete lpPacket;
 		}
 	}
-
-	WSACleanup();
-	ExitProcess(EXIT_SUCCESS);
 }

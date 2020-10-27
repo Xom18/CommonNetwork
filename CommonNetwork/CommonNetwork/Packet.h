@@ -1,14 +1,14 @@
 #pragma once
 
 /// <summary>
-/// ¼ö½Å¹ŞÀº ÆĞÅ¶Àº ¿©±â¿¡ ¹ß½ÅÀÚ Á¤º¸¿Í Å©±â, ÆĞÅ¶À» ´ã°íÀÖ´Ù
+/// ìˆ˜ì‹ ë°›ì€ íŒ¨í‚·ì€ ì—¬ê¸°ì— ë°œì‹ ì ì •ë³´ì™€ í¬ê¸°, íŒ¨í‚·ì„ ë‹´ê³ ìˆë‹¤
 /// </summary>
 class cPacket
 {
 public:
-	sockaddr_in m_AddrInfo;	//¼Û½ÅÀÚ ¶Ç´Â ¼ö½ÅÀÚ
-	int m_iSize;			//µ¥ÀÌÅÍ Å©±â
-	char* m_pData;			//µ¥ÀÌÅÍ
+	sockaddr_in m_AddrInfo;	//ì†¡ì‹ ì ë˜ëŠ” ìˆ˜ì‹ ì
+	int m_iSize;			//ë°ì´í„° í¬ê¸°
+	char* m_pData;			//ë°ì´í„°
 
 	~cPacket()
 	{
@@ -16,14 +16,15 @@ public:
 	}
 
 	/// <summary>
-	/// ¼ö½Å¹ŞÀº ÆĞÅ¶À» ³Ö¾îµÎ´Â ÇÔ¼ö
+	/// ìˆ˜ì‹ ë°›ì€ íŒ¨í‚·ì„ ë„£ì–´ë‘ëŠ” í•¨ìˆ˜
 	/// </summary>
-	/// <param name="_lpAddrInfo">¼Û½ÅÀÚ ¶Ç´Â ¼ö½ÅÀÚ Á¤º¸</param>
-	/// <param name="_iSize">µ¥ÀÌÅÍ Å©±â</param>
-	/// <param name="_lpData">µ¥ÀÌÅÍ</param>
+	/// <param name="_lpAddrInfo">ì†¡ì‹ ì ë˜ëŠ” ìˆ˜ì‹ ì ì •ë³´</param>
+	/// <param name="_iSize">ë°ì´í„° í¬ê¸°</param>
+	/// <param name="_lpData">ë°ì´í„°</param>
 	void setData(sockaddr_in* _lpAddrInfo, int _iSize, char* _lpData)
 	{
-		memcpy(&m_AddrInfo, _lpAddrInfo, sizeof(sockaddr_in));
+		if(_lpAddrInfo != nullptr)
+			memcpy(&m_AddrInfo, _lpAddrInfo, sizeof(sockaddr_in));
 		m_iSize = _iSize;
 		m_pData = new char[_iSize];
 		ZeroMemory(m_pData, _iSize);

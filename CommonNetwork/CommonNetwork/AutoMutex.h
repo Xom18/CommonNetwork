@@ -1,6 +1,6 @@
 #pragma once
 
-//ÇØ´ç Áö¿ª¿¡¼­¸¸ ¶ô °É°í ÀÚµ¿À¸·Î Ç®¸®°Ô ¸¸µç°Å
+//í•´ë‹¹ ì§€ì—­ì—ì„œë§Œ ë½ ê±¸ê³  ìë™ìœ¼ë¡œ í’€ë¦¬ê²Œ ë§Œë“ ê±°
 class cAutoMutex
 {
 private:
@@ -19,4 +19,4 @@ public:
 	}
 };
 
-#define mAMTX(_lpMutex) cAutoMutex __CS__##_lpMutex(&_lpMutex)//ÀÚµ¿À¸·Î ¶ô °É¸®°í Áö¿ªº¯¼ö°¡ ÇØÁ¦µÉ ¶§ ÀÚµ¿À¸·Î ÇØÁ¦
+#define mAMTX(_lpMutex) cAutoMutex __CS__##_lpMutex(&_lpMutex)//ìë™ìœ¼ë¡œ ë½ ê±¸ë¦¬ê³  ì§€ì—­ë³€ìˆ˜ê°€ í•´ì œë  ë•Œ ìë™ìœ¼ë¡œ í•´ì œ

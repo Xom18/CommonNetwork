@@ -18,6 +18,12 @@
     <Filter Include="소스 파일\Common">
       <UniqueIdentifier>{52a93d6f-ee34-496c-9c6a-b6ffd650b979}</UniqueIdentifier>
     </Filter>
+    <Filter Include="소스 파일\TCPSocket\Server">
+      <UniqueIdentifier>{cf3e287e-0518-48cf-b8f9-edbd842399b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="소스 파일\TCPSocket\Client">
+      <UniqueIdentifier>{44fc447b-6914-4a94-82ad-536ba98f17ee}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -25,6 +31,12 @@
     </ClCompile>
     <ClCompile Include="UDPSocket.cpp">
       <Filter>소스 파일\UDPSocket</Filter>
+    </ClCompile>
+    <ClCompile Include="TCPSocketServer.cpp">
+      <Filter>소스 파일\TCPSocket\Server</Filter>
+    </ClCompile>
+    <ClCompile Include="TCPSocket.cpp">
+      <Filter>소스 파일\TCPSocket\Client</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -42,6 +54,12 @@
     </ClInclude>
     <ClInclude Include="UDPSocket.h">
       <Filter>소스 파일\UDPSocket</Filter>
+    </ClInclude>
+    <ClInclude Include="TCPSocketServer.h">
+      <Filter>소스 파일\TCPSocket\Server</Filter>
+    </ClInclude>
+    <ClInclude Include="TCPSocket.h">
+      <Filter>소스 파일\TCPSocket\Client</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
