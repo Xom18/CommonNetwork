@@ -62,4 +62,7 @@
       <Filter>소스 파일\TCPSocket\Client</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\.editorconfig" />
+  </ItemGroup>
 </Project>
