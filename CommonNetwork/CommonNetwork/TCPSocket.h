@@ -16,6 +16,7 @@
 class cTCPSocket
 {
 private:
+	int*	m_lpMasterStatus;					//서버에서 지정하는 상태
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
 	SOCKET	m_Sock;								//소켓
 	sockaddr_in m_SockInfo;						//소켓 정보
@@ -23,29 +24,39 @@ private:
 	std::mutex m_mtxSendMutex;					//송신 뮤텍스
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
 
-	std::queue<cPacket*>	m_qSendQueue;		//송신 큐
-	std::queue<cPacket*>	m_qSendWaitQueue;	//송신 대기 큐
-	std::queue<cPacket*>	m_qRecvQueue;		//수신 큐
+	std::queue<cPacketTCP*>	m_qSendQueue;		//송신 큐
+	std::queue<cPacketTCP*>	m_qSendWaitQueue;	//송신 대기 큐
+	std::queue<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 	std::thread* m_pRecvThread;					//수신 스레드
 	std::thread* m_pSendThread;					//송신 스레드
-	int		m_iSerial;							//시리얼
+	std::thread* m_pStoppingThread;				//중단 스레드
 
 public:
 	cTCPSocket()//생성자
 	{
 		m_pRecvThread = nullptr;	//연결 대기 스레드
 		m_pSendThread = nullptr;	//연결 대기 스레드
+		m_pStoppingThread = nullptr;
+		m_lpMasterStatus = nullptr;
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
-		m_iSerial = INT_MAX;		//클라이언트쪽에선 필요없고 서버쪽에서 패킷 누가보냈는지 알려고
 		m_Sock = 0;
 	};
 
 	~cTCPSocket()//소멸자
 	{
 		stopThread();
+		if(m_pStoppingThread != nullptr)
+			m_pStoppingThread->join();
+		KILL(m_pStoppingThread);
 	}
 
 private:
+
+	/// <summary>
+	/// 중단 마무리 스레드
+	/// </summary>
+	void stoppingThread();
+
 	/// <summary>
 	/// 수신 스레드
 	/// </summary>
@@ -74,11 +85,12 @@ private:
 	/// 수신받을걸 수신큐에 넣는 함수
 	/// </summary>
 	/// <param name="_lpPacket">수신받은 패킷</param>
-	inline void pushRecvQueue(cPacket* _lpPacket)
+	inline void pushRecvQueue(cPacketTCP* _lpPacket)
 	{
 		mAMTX(m_mtxRecvMutex);
 		m_qRecvQueue.push(_lpPacket);
 	}
+
 public:
 
 	/// <summary>
@@ -87,7 +99,7 @@ public:
 	/// <param name="_Sock">연결요청자의 소켓</param>
 	/// <param name="_Addr">연결요청자의 Addr</param>
 	/// <param name="_iAddrLength">Addr 크기</param>
-	void setSocket(SOCKET _Sock, sockaddr_in* _Addr, int _iAddrLength)
+	void setSocket(SOCKET _Sock, sockaddr_in* _Addr, int _iAddrLength, int* _lpMasterStatus)
 	{
 		m_Sock = _Sock;
 		memcpy(&m_SockInfo, _Addr, _iAddrLength);
@@ -134,7 +146,7 @@ public:
 	/// <param name="_lpAddrInfo">수신 또는 송신받을 대상</param>
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
-	inline void pushSend(sockaddr_in* _lpAddrInfo, int _iSize, char* _lpData)
+	inline void pushSend(int _iSize, char* _lpData)
 	{
 		if(_iSize >= _MAX_TCP_DATA_SIZE)
 		{
@@ -142,8 +154,8 @@ public:
 			return;
 		}
 
-		cPacket* pPacket = new cPacket();
-		pPacket->setData(_lpAddrInfo, _iSize, _lpData);
+		cPacketTCP* pPacket = new cPacketTCP();
+		pPacket->setData(_iSize, _lpData);
 		mAMTX(m_mtxSendMutex);
 		m_qSendWaitQueue.push(pPacket);
 	}
@@ -153,7 +165,7 @@ public:
 	/// </summary>
 	/// <param name="_lpQueue">복사 뜰 버퍼</param>
 	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
-	inline void copyRecvQueue(std::queue<cPacket*>* _lpQueue, bool _bWithClear = true)
+	inline void copyRecvQueue(std::queue<cPacketTCP*>* _lpQueue, bool _bWithClear = true)
 	{
 		mAMTX(m_mtxRecvMutex);
 		if(m_qRecvQueue.empty())
@@ -163,26 +175,36 @@ public:
 		//초기화 요청에 따른 초기화
 		if(_bWithClear)
 		{
-			std::queue<cPacket*>	qRecvQueue;
+			std::queue<cPacketTCP*>	qRecvQueue;
 			std::swap(m_qRecvQueue, qRecvQueue);
 		}
 	}
 
 	/// <summary>
-	/// 시리얼 설정
+	/// 수신 큐 내용물 자체를 이어붙이는거
 	/// </summary>
-	/// <param name="_iSerial">시리얼(반드시 고유해야됨)</param>
-	inline void setSerial(int _iSerial)
+	/// <param name="_lpQueue">뒤에 이어붙일 큐</param>
+	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
+	inline void pushbackAllRecvQueue(std::queue<cPacketTCP*>* _lpQueue)
 	{
-		m_iSerial = _iSerial;
+		if(m_qRecvQueue.empty())
+			return;
+
+		mAMTX(m_mtxRecvMutex);
+		while(!m_qRecvQueue.empty())
+		{
+			cPacketTCP* lpPacket = m_qRecvQueue.front();
+			_lpQueue->push(lpPacket);
+			m_qRecvQueue.pop();
+		}
 	}
 
 	/// <summary>
-	/// 시리얼 받아오기
+	/// 소켓 받아오기
 	/// </summary>
-	/// <returns>시리얼</returns>
-	inline int getSerial()
+	/// <returns>m_Sock</returns>
+	inline SOCKET getSocket()
 	{
-		return m_iSerial;
+		return m_Sock;
 	}
 };

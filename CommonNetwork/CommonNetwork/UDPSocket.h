@@ -19,9 +19,9 @@ private:
 	std::mutex m_mtxSendMutex;					//송신 뮤텍스
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
 
-	std::queue<cPacket*>	m_qSendQueue;		//송신 큐
-	std::queue<cPacket*>	m_qSendWaitQueue;	//송신 대기 큐
-	std::queue<cPacket*>	m_qRecvQueue;		//수신 큐
+	std::queue<cPacketUDP*>	m_qSendQueue;		//송신 큐
+	std::queue<cPacketUDP*>	m_qSendWaitQueue;	//송신 대기 큐
+	std::queue<cPacketUDP*>	m_qRecvQueue;		//수신 큐
 	std::thread* m_pSendThread;					//송신 스레드
 	std::thread* m_pRecvThread;					//수신 스레드
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
@@ -74,7 +74,7 @@ private:
 	/// 수신받을걸 수신큐에 넣는 함수
 	/// </summary>
 	/// <param name="_lpPacket">수신받은 패킷</param>
-	inline void pushRecvQueue(cPacket* _lpPacket)
+	inline void pushRecvQueue(cPacketUDP* _lpPacket)
 	{
 		mAMTX(m_mtxRecvMutex);
 		m_qRecvQueue.push(_lpPacket);
@@ -117,7 +117,7 @@ public:
 	/// <param name="_lpAddrInfo">수신 또는 송신받을 대상</param>
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
-	inline void pushSend(sockaddr_in* _lpAddrInfo, int _iSize, char* _lpData)
+	inline void pushSend(int _iSize, char* _lpData, sockaddr_in* _lpAddrInfo = nullptr)
 	{
 		//UDP는 패킷 크기가 커질수록 도착할 확률이 낮아져서 일부러 작게함
 		if (_iSize >= _MAX_UDP_DATA_SIZE)
@@ -126,8 +126,8 @@ public:
 			return;
 		}
 
-		cPacket* pPacket = new cPacket();
-		pPacket->setData(_lpAddrInfo, _iSize, _lpData);
+		cPacketUDP* pPacket = new cPacketUDP();
+		pPacket->setData(_iSize, _lpData, _lpAddrInfo);
 		mAMTX(m_mtxSendMutex);
 		m_qSendWaitQueue.push(pPacket);
 	}
@@ -137,7 +137,7 @@ public:
 	/// </summary>
 	/// <param name="_lpQueue">복사 뜰 버퍼</param>
 	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
-	inline void copyRecvQueue(std::queue<cPacket*>* _lpQueue, bool _bWithClear = true)
+	inline void copyRecvQueue(std::queue<cPacketUDP*>* _lpQueue, bool _bWithClear = true)
 	{
 		mAMTX(m_mtxRecvMutex);
 		if (m_qRecvQueue.empty())
@@ -147,7 +147,7 @@ public:
 		//초기화 요청에 따른 초기화
 		if (_bWithClear)
 		{
-			std::queue<cPacket*>	qRecvQueue;
+			std::queue<cPacketUDP*>	qRecvQueue;
 			std::swap(m_qRecvQueue, qRecvQueue);
 		}
 	}

@@ -41,16 +41,28 @@ int main(const int argc, const char* argv[])
 
 
 	WSACleanup();
+
+
+	std::cin >> strText;	//텍스트 입력
 	ExitProcess(EXIT_SUCCESS);
 }
 
 void TCPTest()
 {
+	const int iDummyCount = 100;	//테스트용 더미
 	cTCPSocketServer TCPServer;	//서버
 	cTCPSocket TCPClient;	//클라
 
 	TCPServer.beginThread();
-//	TCPClient.tryConnectServer(IP);
+
+	cTCPSocket aTCPClient[iDummyCount];	//클라
+
+	for(int i = 0; i < iDummyCount; ++i)
+	{
+		aTCPClient[i].tryConnectServer(IP);
+	}
+
+	TCPClient.tryConnectServer(IP);
 
 	while(true)
 	{
@@ -61,9 +73,62 @@ void TCPTest()
 		if(strcmp(strText.c_str(), "QUIT") == 0)
 		{
 			TCPServer.stopThread();
-			TCPServer.stopThread();
+			TCPClient.stopThread();
+			for(int i = 0; i < iDummyCount; ++i)
+				aTCPClient[i].stopThread();
 
 			break;
+		}
+
+		TCPClient.pushSend(strText.length() + 1, (char*)strText.c_str());
+
+		Sleep(1000);	//패킷이 찍고오기까지 기다려주는 시간 넉넉하게 1초
+
+		//수신받은 패킷 처리하기 위한 큐
+		std::queue<cPacketTCP*> recvQueue;
+		TCPServer.copyRecvQueue(&recvQueue, true);
+
+		//패킷 처리
+		while(!recvQueue.empty())
+		{
+			cPacketTCP* lpPacket = recvQueue.front();
+			recvQueue.pop();
+
+			printf("[Server]%lld : %s\n", lpPacket->m_Sock, lpPacket->m_pData);
+
+			TCPServer.sendAll(lpPacket->m_iSize, lpPacket->m_pData);
+
+			//반드시 처리한 뒤 패킷 delete
+			delete lpPacket;
+		}
+
+		Sleep(1000);	//패킷이 찍고오기까지 기다려주는 시간 넉넉하게 1초
+
+		TCPClient.copyRecvQueue(&recvQueue, true);
+		while(!recvQueue.empty())
+		{
+			cPacketTCP* lpPacket = recvQueue.front();
+			recvQueue.pop();
+
+			printf("[Client]%lld : %s\n", lpPacket->m_Sock, lpPacket->m_pData);
+
+			//반드시 처리한 뒤 패킷 delete
+			delete lpPacket;
+		}
+
+		for(int i = 0; i < iDummyCount; ++i)
+		{
+			aTCPClient[i].copyRecvQueue(&recvQueue, true);
+			while(!recvQueue.empty())
+			{
+				cPacketTCP* lpPacket = recvQueue.front();
+				recvQueue.pop();
+
+				printf("[Client]%lld : %s\n", lpPacket->m_Sock, lpPacket->m_pData);
+
+				//반드시 처리한 뒤 패킷 delete
+				delete lpPacket;
+			}
 		}
 	}
 }
@@ -92,18 +157,18 @@ void UDPTest()
 		}
 
 		//전송
-		UDPClient.pushSend(UDPClient.getSockinfo(), strText.length() + 1, (char*)strText.c_str());
+		UDPClient.pushSend(strText.length() + 1, (char*)strText.c_str(), UDPClient.getSockinfo());
 		
 		Sleep(1000);	//패킷이 찍고오기까지 기다려주는 시간 넉넉하게 1초
 
 		//수신받은 패킷 처리하기 위한 큐
-		std::queue<cPacket*> recvQueue;
+		std::queue<cPacketUDP*> recvQueue;
 		UDPServer.copyRecvQueue(&recvQueue, true);
 
 		//패킷 처리
 		while(!recvQueue.empty())
 		{
-			cPacket* lpPacket = recvQueue.front();
+			cPacketUDP* lpPacket = recvQueue.front();
 			recvQueue.pop();
 
 			char clientIP[256];
@@ -111,7 +176,7 @@ void UDPTest()
 			inet_ntop(AF_INET, &lpPacket->m_AddrInfo.sin_addr, clientIP, sizeof(clientIP));
 			printf("[Server]%s : %s\n", clientIP, lpPacket->m_pData);
 
-			UDPServer.pushSend(&lpPacket->m_AddrInfo, lpPacket->m_iSize, lpPacket->m_pData);
+			UDPServer.pushSend(lpPacket->m_iSize, lpPacket->m_pData, &lpPacket->m_AddrInfo);
 
 			//반드시 처리한 뒤 패킷 delete
 			delete lpPacket;
@@ -122,7 +187,7 @@ void UDPTest()
 		UDPClient.copyRecvQueue(&recvQueue, true);
 		while(!recvQueue.empty())
 		{
-			cPacket* lpPacket = recvQueue.front();
+			cPacketUDP* lpPacket = recvQueue.front();
 			recvQueue.pop();
 
 			char clientIP[256];

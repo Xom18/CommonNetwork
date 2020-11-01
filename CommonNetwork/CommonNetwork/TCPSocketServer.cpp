@@ -2,6 +2,7 @@
 #include <mutex>
 #include <WS2tcpip.h>
 #include <map>
+#include <list>
 #include "Macro.h"
 #include "Define.h"
 #include "AutoMutex.h"
@@ -11,16 +12,6 @@
 
 void cTCPSocketServer::connectThread()
 {
-	fd_set FdSet;
-	struct timeval tv;
-
-	// 어디꺼 볼지 셋팅
-	FD_ZERO(&FdSet);
-	FD_SET(m_Sock, &FdSet);
-
-	tv.tv_sec = 10;	//10초 타임아웃
-	tv.tv_usec = 0;	//밀리초는 없음
-
 	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
 	int ClientAddrLength = sizeof(sockaddr_in);
 
@@ -31,36 +22,25 @@ void cTCPSocketServer::connectThread()
 		sockaddr_in Client;
 		ZeroMemory(&Client, sizeof(Client));
 
-		//타임아웃이거나 뭐가 왔거나 에러거나, 데이터왔으면 1, 타임아웃 0, 에러 -1
-		int iSelectResult = select((int)m_Sock, &FdSet, NULL, NULL, &tv);
-		if(iSelectResult != 1)
+		SOCKET Socket = accept(m_Sock, (sockaddr*)&Client, &ClientAddrLength);
+		if(Socket == INVALID_SOCKET)
 			continue;
 
 		cTCPSocket* pNewSocket = new cTCPSocket();
-		SOCKET Socket = accept(m_Sock, (sockaddr*)&Client, &ClientAddrLength);
-		pNewSocket->setSocket(Socket, &Client, ClientAddrLength);
+		pNewSocket->setSocket(Socket, &Client, ClientAddrLength, &m_iStatus);
+		pNewSocket->beginThread();
 
-		//송신자 IP보려고 넣어둔거, 주석
+		//연결된거 IP보려고 넣어둔거, 주석
 		char clientIP[256];
 		ZeroMemory(clientIP, sizeof(clientIP));
 		inet_ntop(AF_INET, &Client.sin_addr, clientIP, sizeof(clientIP));
-		printf("연결성공[%s]\n", clientIP);
+		printf("Connect success [%s]\n", clientIP);
 
-		mAMTX(m_mtxConnectionMutex);
-
-		if(m_qUseEndIndex.empty())//반환된 인덱스가 없으면 제일 뒤쪽에
+		//연결대기에 추가
 		{
-			pNewSocket->setSerial((int)m_mapTCPSocket.size());
+			mAMTX(m_mtxConnectionMutex);
+			m_qConnectWait.push(pNewSocket);
 		}
-		else
-		{//반환된 인덱스가 있으면 그거를 사용
-			pNewSocket->setSerial(m_qUseEndIndex.front());
-			m_qUseEndIndex.pop();
-		}
-		m_mapTCPSocket.insert(std::pair<int, cTCPSocket*>(pNewSocket->getSerial(), pNewSocket));
-
-		//스레드 시작
-		pNewSocket->beginThread();
 	}
 
 	pKILL(pRecvBuffer);
@@ -68,49 +48,108 @@ void cTCPSocketServer::connectThread()
 	printf("End recvThread\n");
 }
 
-void cTCPSocketServer::sendThread()//송신 스레드
+// 처리 스레드
+// 패킷 가져오고 전역패킷 보내고 처리
+void cTCPSocketServer::operateThread()
 {
 	printf("Begin SendThread %d\n", m_iPort);
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
+
+	//삭제 처리용
+	std::list<cTCPSocket*> listDeleteWait;
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
+		//삭제 처리용
+		std::queue<SOCKET> qRemoveInMap;
+
+		//연결 대기중인거 처리
+		operateConnectWait();
+
+		bool bIsNotHaveSend = false;
 		if(m_qSendQueue.empty())
 		{//비어있으면 대기큐꺼 가져온다
 			commitSendWaitQueue();
 
-			//대기큐꺼도 비어있으면 10ms동안 대기
+			//대기큐도 비어있으면 보낼 전역 패킷이 없는거다
 			if(m_qSendQueue.empty())
-				Sleep(10);
-			continue;
+				bIsNotHaveSend = true;
 		}
 
-		ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
-		sockaddr_in AddrInfo;	//수신자 정보
-		int iDataSize = 0;		//데이터 크기
-
-		{//전송을 위해 패킷을 꺼냈다
-			cPacket* lpPacket = m_qSendQueue.front();
-			iDataSize = lpPacket->m_iSize;
-			memcpy(&AddrInfo, &lpPacket->m_AddrInfo, sizeof(AddrInfo));
-			memcpy(pSendBuffer, lpPacket->m_pData, iDataSize);
-			//누수없게 바로 해제
-			m_qSendQueue.pop();
-			delete lpPacket;
-		}
-
-		//모두에게 패킷 전송
-		if(send(m_Sock, pSendBuffer, iDataSize, 0) == SOCKET_ERROR)
+		//패킷 송수신 처리
 		{
-			printf("송신 에러\n");
-			continue;
+			std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.begin();
+			for(; iter != m_mapTCPSocket.end(); ++iter)
+			{
+				cTCPSocket* lpTCPSocket = iter->second;
+
+				//도는중이 아니다
+				if(lpTCPSocket->getSocketStatus() != eTHREAD_STATUS_RUN)
+				{
+					listDeleteWait.push_back(lpTCPSocket);
+					qRemoveInMap.push(iter->first);
+					continue;
+				}
+
+				//패킷 수신 처리
+				{
+					mAMTX(m_mtxRecvMutex);
+					lpTCPSocket->pushbackAllRecvQueue(&m_qRecvQueue);
+				}
+
+				//전역송신 패킷 있으면 그거 보내주기
+				if(bIsNotHaveSend == false)
+				{
+					std::queue<cPacketTCP*> qSendQueue = m_qSendQueue;
+					while(!qSendQueue.empty())
+					{
+						cPacketTCP* lpPacket = qSendQueue.front();
+						lpTCPSocket->pushSend(lpPacket->m_iSize, lpPacket->m_pData);
+						qSendQueue.pop();
+					}
+				}
+			}
 		}
 
-		//if(sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
-		//{//송신실패하면 에러
-		//	printf("송신 에러\n");
-		//	continue;
-		//}
+		//송신한 패킷 지우기
+		while(!m_qSendQueue.empty())
+		{
+			cPacketTCP* qSendQueue = m_qSendQueue.front();
+			m_qSendQueue.pop();
+			KILL(qSendQueue);
+		}
+
+		//삭제하려는거 map에서 제거
+		if(!qRemoveInMap.empty())
+		{
+			mAMTX(m_mtxSocketMutex);
+			while(!qRemoveInMap.empty())
+			{
+				SOCKET Sock = qRemoveInMap.front();
+				qRemoveInMap.pop();
+
+				m_mapTCPSocket.erase(Sock);
+			}
+		}
+
+		//삭제목록에 있는거 처리
+		//이번타임이 아니여도 된다, 다음 루프일수도 있고 다다음 루프일수도 있고
+		{
+			std::list<cTCPSocket*>::iterator iter = listDeleteWait.begin();
+			while(iter != listDeleteWait.end())
+			{
+				cTCPSocket* pSocket = *iter;
+
+				//완전히 섰다
+				if(pSocket->getSocketStatus() == eTHREAD_STATUS_IDLE)
+				{
+					++iter;
+					KILL(pSocket);
+					continue;
+				}
+				++iter;
+			}
+		}
 	}
 
 	pKILL(pSendBuffer);
@@ -121,8 +160,7 @@ void cTCPSocketServer::sendThread()//송신 스레드
 void cTCPSocketServer::beginThread(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 {
 	if(m_pConnectThread != nullptr
-	|| m_pRecieveThread != nullptr
-	|| m_pSendThread != nullptr)
+	|| m_pOperateThread != nullptr)
 	{
 		printf("이미 구동중인 스레드가 있다\n");
 		return;
@@ -174,32 +212,86 @@ void cTCPSocketServer::beginThread(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 	//상태 변경하고 스레드 시작
 	m_iStatus = eTHREAD_STATUS_RUN;
 	m_pConnectThread = new std::thread([&]() {connectThread(); });
-	m_pSendThread = new std::thread([&]() {sendThread(); });
+	m_pOperateThread = new std::thread([&]() {operateThread(); });
 }
 
 //스레드 정지
 void cTCPSocketServer::stopThread()
 {
 	//스레드가 멈춰있으면 의미없으니 return
-	if(m_iStatus == eTHREAD_STATUS_IDLE)
+	if(m_iStatus == eTHREAD_STATUS_IDLE
+	|| m_iStatus == eTHREAD_STATUS_STOP)
 		return;
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;
 
+	//accept 소캣 중단
+	closesocket(m_Sock);
+
 	//스레드 정지 대기
-	m_pSendThread->join();
+	m_pOperateThread->join();
 	m_pConnectThread->join();
 
 	//변수 해제
-	KILL(m_pSendThread);
+	KILL(m_pOperateThread);
 	KILL(m_pConnectThread);
+
+	//연결 대기중인거 처리
+	operateConnectWait();
+
+	//연결중인거 정지
+	std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.begin();
+	for(; iter != m_mapTCPSocket.end(); ++iter)
+	{
+		iter->second->stopThread();
+	}
+
+	//연결중인거 해제
+	//돌고있는 스레드가 없을때까지 계속 돌린다
+	iter = m_mapTCPSocket.begin();
+	while(!m_mapTCPSocket.empty())
+	{
+		cTCPSocket* lpSocket = iter->second;
+
+		//완전히 서야 삭제해준다
+		//아니면 다시 올려보냄
+		if(lpSocket->getSocketStatus() == eTHREAD_STATUS_IDLE)
+		{
+			KILL(lpSocket);
+			std::map<SOCKET, cTCPSocket*>::iterator RemoveIter = iter++;
+			m_mapTCPSocket.erase(RemoveIter);
+		}
+		else
+		{
+			++iter;
+		}
+
+		if(iter == m_mapTCPSocket.end())
+			iter = m_mapTCPSocket.begin();
+	}
+
+	m_mapTCPSocket.clear();
+
+	while(!m_qSendQueue.empty())
+	{
+		cPacketTCP* pPacket = m_qSendQueue.front();
+		m_qSendQueue.pop();
+		KILL(pPacket);
+	}
+	while(!m_qSendWaitQueue.empty())
+	{
+		cPacketTCP* pPacket = m_qSendWaitQueue.front();
+		m_qSendWaitQueue.pop();
+		KILL(pPacket);
+	}
+	while(!m_qRecvQueue.empty())
+	{
+		cPacketTCP* pPacket = m_qRecvQueue.front();
+		m_qRecvQueue.pop();
+		KILL(pPacket);
+	}
 
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
-
-	//소켓 닫음
-	closesocket(m_Sock);
-
-	//	WSACleanup();
 }

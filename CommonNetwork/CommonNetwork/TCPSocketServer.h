@@ -19,33 +19,33 @@
 class cTCPSocketServer
 {
 private:
-	std::mutex m_mtxSendMutex;					//송신 뮤텍스
+	std::mutex m_mtxSendMutex;					//송신 뮤텍스(전체)
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
-	std::mutex m_mtxConnectionMutex;			//연결 뮤텍스
+	std::mutex m_mtxConnectionMutex;			//연결 대기 뮤텍스
+	std::mutex m_mtxSocketMutex;				//연결 뮤텍스
 
-	std::queue<cPacket*>	m_qSendQueue;		//송신 큐
-	std::queue<cPacket*>	m_qSendWaitQueue;	//송신 대기 큐
-	std::queue<cPacket*>	m_qRecvQueue;		//수신 큐
-	std::queue<cPacket*>	m_qRecvWaitQueue;	//수신 대기큐
+	std::queue<cPacketTCP*>	m_qSendQueue;		//송신 큐
+	std::queue<cPacketTCP*>	m_qSendWaitQueue;	//송신 대기 큐
+	std::queue<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 
 	std::thread* m_pConnectThread;				//연결 대기 스레드
-	std::thread* m_pRecieveThread;				//수신 스레드(얘가 순회돌면서 패킷 가져옴)
-	std::thread* m_pSendThread;					//송신 스레드(연결대상 전체를 향한 송신할 때 사용)
-//	std::thread* m_pSendTargetThread;			//송신할 패킷 분배 스레드
+	std::thread* m_pOperateThread;				//처리 스레드(패킷수신, 전역송신)
+	std::thread* m_pSendThread;					//처리 스레드
 
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
 	int		m_iPort;							//포트
 	SOCKET	m_Sock;								//소켓
 	sockaddr_in m_SockInfo;						//소켓 정보
 
-	std::map<int, cTCPSocket*> m_mapTCPSocket;	//연결되있는 TCP 소켓들, 특정 대상 패킷처리 원활하게 인덱스로 잡혀있음
-	std::queue<int> m_qUseEndIndex;				//사용 종료된 인덱스
+	std::map<SOCKET, cTCPSocket*> m_mapTCPSocket;	//연결되있는 TCP 소켓들, 특정 대상 패킷처리 원활하게 인덱스로 잡혀있음
+	//연결 대기 큐
+	std::queue<cTCPSocket*> m_qConnectWait;	//연결 대기 큐
+
 public:
 	cTCPSocketServer()//생성자
 	{
 		m_pConnectThread = nullptr;	//연결 대기 스레드
-		m_pRecieveThread = nullptr;	//수신 스레드
-		m_pSendThread = nullptr;	//전역 송신 스레드
+		m_pOperateThread = nullptr;	//수신 스레드
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
 		m_iPort = _DEFAULT_PORT;	//포트
 	};
@@ -62,10 +62,31 @@ private:
 	void connectThread();
 
 	/// <summary>
-	/// 송신 스레드
-	/// 전역송신이 대상인 패킷만 여기서 처리
+	/// 처리 스레드
+	/// 패킷 가져오고 전역패킷 보내고 처리
 	/// </summary>
-	void sendThread();
+	void operateThread();
+
+	inline void operateConnectWait()
+	{
+		//연결 대기중인거 다 밀어넣기
+		if(!m_qConnectWait.empty())
+		{
+			std::queue<cTCPSocket*> qConnectWait;
+			{
+				mAMTX(m_mtxConnectionMutex);
+				std::swap(m_qConnectWait, qConnectWait);
+			}
+
+			mAMTX(m_mtxSocketMutex);
+			while(!qConnectWait.empty())
+			{
+				cTCPSocket* lpSocket = qConnectWait.front();
+				qConnectWait.pop();
+				m_mapTCPSocket.insert(std::pair<SOCKET, cTCPSocket*>(lpSocket->getSocket(), lpSocket));
+			}
+		}
+	}
 
 	/// <summary>
 	/// 송신큐 대기큐에 있는걸 송신큐에 넣는 함수
@@ -80,15 +101,6 @@ private:
 		std::swap(m_qSendQueue, m_qSendWaitQueue);
 	}
 
-	/// <summary>
-	/// 수신받을걸 수신큐에 넣는 함수
-	/// </summary>
-	/// <param name="_lpPacket">수신받은 패킷</param>
-	inline void pushRecvQueue(cPacket* _lpPacket)
-	{
-		mAMTX(m_mtxRecvMutex);
-		m_qRecvQueue.push(_lpPacket);
-	}
 public:
 	/// <summary>
 	/// 소켓 시작
@@ -134,10 +146,26 @@ public:
 			return;
 		}
 
-		cPacket* pPacket = new cPacket();
-		pPacket->setData(nullptr, _iSize, _lpData);
+		cPacketTCP* pPacket = new cPacketTCP();
+		pPacket->setData(_iSize, _lpData);
 		mAMTX(m_mtxSendMutex);
 		m_qSendWaitQueue.push(pPacket);
+	}
+
+	/// <summary>
+	/// 특정 대상에게 송신하는 패킷
+	/// </summary>
+	/// <param name="_Socket">대상 소캣</param>
+	/// <param name="_iSize">데이터 크기</param>
+	/// <param name="_lpData">데이터</param>
+	/// <returns></returns>
+	inline bool sendTarget(SOCKET _Socket, int _iSize, char* _lpData)
+	{
+		mAMTX(m_mtxSocketMutex);
+		std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.find(_Socket);
+		if(iter == m_mapTCPSocket.end())
+			return false;
+		iter->second->pushSend(_iSize, _lpData);
 	}
 
 	/// <summary>
@@ -145,7 +173,7 @@ public:
 	/// </summary>
 	/// <param name="_lpQueue">복사 뜰 버퍼</param>
 	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
-	inline void copyRecvQueue(std::queue<cPacket*>* _lpQueue, bool _bWithClear = true)
+	inline void copyRecvQueue(std::queue<cPacketTCP*>* _lpQueue, bool _bWithClear = true)
 	{
 		mAMTX(m_mtxRecvMutex);
 		if(m_qRecvQueue.empty())
@@ -155,7 +183,7 @@ public:
 		//초기화 요청에 따른 초기화
 		if(_bWithClear)
 		{
-			std::queue<cPacket*>	qRecvQueue;
+			std::queue<cPacketTCP*>	qRecvQueue;
 			std::swap(m_qRecvQueue, qRecvQueue);
 		}
 	}

@@ -1,6 +1,7 @@
 #include <queue>
 #include <mutex>
 #include <WS2tcpip.h>
+#include <chrono>
 #include "Macro.h"
 #include "Define.h"
 #include "AutoMutex.h"
@@ -29,8 +30,8 @@ void cUDPSocket::recvThread()
 		}
 
 		//받은 데이터 처리
-		cPacket* pPacket = new cPacket();
-		pPacket->setData(&Client, iDataLength, pRecvBuffer);
+		cPacketUDP* pPacket = new cPacketUDP();
+		pPacket->setData(iDataLength, pRecvBuffer, &Client);
 
 		//큐에 넣는다
 		pushRecvQueue(pPacket);
@@ -59,8 +60,11 @@ void cUDPSocket::sendThread()//송신 스레드
 			commitSendWaitQueue();
 
 			//대기큐꺼도 비어있으면 10ms동안 대기
-			if (m_qSendQueue.empty())
-				Sleep(10);
+			if(m_qSendQueue.empty())
+			{
+				std::chrono::milliseconds TimeMS(10);
+				std::this_thread::sleep_for(TimeMS);
+			}
 			continue;
 		}
 
@@ -69,7 +73,7 @@ void cUDPSocket::sendThread()//송신 스레드
 		int iDataSize = 0;		//데이터 크기
 
 		{//전송을 위해 패킷을 꺼냈다
-			cPacket* lpPacket = m_qSendQueue.front();
+			cPacketUDP* lpPacket = m_qSendQueue.front();
 			iDataSize = lpPacket->m_iSize;
 			memcpy(&AddrInfo, &lpPacket->m_AddrInfo, sizeof(AddrInfo));
 			memcpy(pSendBuffer, lpPacket->m_pData, iDataSize);
@@ -147,11 +151,15 @@ void cUDPSocket::beginThread(bool _bIsServer, char* _csIP, int _iPort, int _iTim
 void cUDPSocket::stopThread()
 {
 	//스레드가 멈춰있으면 의미없으니 return
-	if (m_iStatus == eTHREAD_STATUS_IDLE)
+	if (m_iStatus == eTHREAD_STATUS_IDLE
+	|| m_iStatus == eTHREAD_STATUS_STOP)
 		return;
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;
+
+	//소켓 닫음
+	closesocket(m_Sock);
 
 	//스레드 정지 대기
 	m_pSendThread->join();
@@ -161,11 +169,28 @@ void cUDPSocket::stopThread()
 	KILL(m_pSendThread);
 	KILL(m_pRecvThread);
 
+	//패킷 큐 해제
+	while(!m_qSendQueue.empty())
+	{
+		cPacketUDP* pPacket = m_qSendQueue.front();
+		m_qSendQueue.pop();
+		KILL(pPacket);
+	}
+	while(!m_qSendWaitQueue.empty())
+	{
+		cPacketUDP* pPacket = m_qSendWaitQueue.front();
+		m_qSendWaitQueue.pop();
+		KILL(pPacket);
+	}
+	while(!m_qRecvQueue.empty())
+	{
+		cPacketUDP* pPacket = m_qRecvQueue.front();
+		m_qRecvQueue.pop();
+		KILL(pPacket);
+	}
+
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
-
-	//소켓 닫음
-	closesocket(m_Sock);
 
 //	WSACleanup();
 }
