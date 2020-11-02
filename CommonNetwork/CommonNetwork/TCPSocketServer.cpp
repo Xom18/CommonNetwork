@@ -3,6 +3,7 @@
 #include <WS2tcpip.h>
 #include <map>
 #include <list>
+#include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
 #include "AutoMutex.h"

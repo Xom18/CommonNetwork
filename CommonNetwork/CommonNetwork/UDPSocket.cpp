@@ -2,6 +2,7 @@
 #include <mutex>
 #include <WS2tcpip.h>
 #include <chrono>
+#include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
 #include "AutoMutex.h"
@@ -10,10 +11,10 @@
 
 void cUDPSocket::recvThread()
 {
+	mLOG("Begin recvThread %d", m_iPort);
+
 	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
 	int ClientAddrLength = sizeof(sockaddr_in);
-
-	printf("Begin recvThread %d\n", m_iPort);
 
 	while (m_iStatus == eTHREAD_STATUS_RUN)
 	{
@@ -45,12 +46,12 @@ void cUDPSocket::recvThread()
 
 	pKILL(pRecvBuffer);
 
-	printf("End recvThread\n");
+	mLOG("End recvThread");
 }
 
 void cUDPSocket::sendThread()//송신 스레드
 {
-	printf("Begin sendThread %d\n", m_iPort);
+	mLOG("Begin sendThread %d", m_iPort);
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 	while (m_iStatus == eTHREAD_STATUS_RUN)
@@ -93,7 +94,7 @@ void cUDPSocket::sendThread()//송신 스레드
 	}
 
 	pKILL(pSendBuffer);
-	printf("End sendThread\n");
+	mLOG("End recvThread");
 }
 
 //스레드 시작

@@ -2,6 +2,7 @@
 #include <mutex>
 #include <WS2tcpip.h>
 #include <map>
+#include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
 #include "AutoMutex.h"
@@ -26,10 +27,7 @@ void cTCPSocket::recvThread()
 		//데이터 수신
 		int iDataLength = recvfrom((int)m_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0, (sockaddr*)&Client, &ClientAddrLength);
 		if(iDataLength == SOCKET_ERROR)
-		{
-			//printf("수신에러\n");
 			continue;
-		}
 
 		//받은 데이터 처리
 		cPacketTCP* pPacket = new cPacketTCP();
@@ -37,7 +35,6 @@ void cTCPSocket::recvThread()
 
 		//큐에 넣는다
 		pushRecvQueue(pPacket);
-
 	}
 
 	pKILL(pRecvBuffer);
