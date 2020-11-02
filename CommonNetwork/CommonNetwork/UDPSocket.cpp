@@ -55,17 +55,19 @@ void cUDPSocket::sendThread()//송신 스레드
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 	while (m_iStatus == eTHREAD_STATUS_RUN)
 	{
+		//비어있으면 10ms동안 대기
 		if (m_qSendQueue.empty())
-		{//비어있으면 대기큐꺼 가져온다
-			commitSendWaitQueue();
-
-			//대기큐꺼도 비어있으면 10ms동안 대기
-			if(m_qSendQueue.empty())
-			{
-				std::chrono::milliseconds TimeMS(10);
-				std::this_thread::sleep_for(TimeMS);
-			}
+		{
+			std::chrono::milliseconds TimeMS(10);
+			std::this_thread::sleep_for(TimeMS);
 			continue;
+		}
+
+		//큐에 있는걸 가져온다
+		std::queue<cPacketUDP*>	qSendQueue;
+		{
+			mAMTX(m_mtxSendMutex);
+			std::swap(qSendQueue, m_qSendQueue);
 		}
 
 		ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
@@ -73,12 +75,12 @@ void cUDPSocket::sendThread()//송신 스레드
 		int iDataSize = 0;		//데이터 크기
 
 		{//전송을 위해 패킷을 꺼냈다
-			cPacketUDP* lpPacket = m_qSendQueue.front();
+			cPacketUDP* lpPacket = qSendQueue.front();
 			iDataSize = lpPacket->m_iSize;
 			memcpy(&AddrInfo, &lpPacket->m_AddrInfo, sizeof(AddrInfo));
 			memcpy(pSendBuffer, lpPacket->m_pData, iDataSize);
 			//누수없게 바로 해제
-			m_qSendQueue.pop();
+			qSendQueue.pop();
 			delete lpPacket;
 		}
 
@@ -174,19 +176,14 @@ void cUDPSocket::stopThread()
 	{
 		cPacketUDP* pPacket = m_qSendQueue.front();
 		m_qSendQueue.pop();
-		KILL(pPacket);
+		delete pPacket;
 	}
-	while(!m_qSendWaitQueue.empty())
-	{
-		cPacketUDP* pPacket = m_qSendWaitQueue.front();
-		m_qSendWaitQueue.pop();
-		KILL(pPacket);
-	}
+
 	while(!m_qRecvQueue.empty())
 	{
 		cPacketUDP* pPacket = m_qRecvQueue.front();
 		m_qRecvQueue.pop();
-		KILL(pPacket);
+		delete pPacket;
 	}
 
 	//상태 재설정

@@ -67,13 +67,40 @@ void cTCPSocketServer::operateThread()
 		operateConnectWait();
 
 		bool bIsNotHaveSend = false;
-		if(m_qSendQueue.empty())
-		{//비어있으면 대기큐꺼 가져온다
-			commitSendWaitQueue();
+		std::queue<cPacketTCP*>	qGlobalSendQueue;
 
-			//대기큐도 비어있으면 보낼 전역 패킷이 없는거다
-			if(m_qSendQueue.empty())
-				bIsNotHaveSend = true;
+		//특정 대상 패킷 처리
+		if(!m_qTargetSendQueue.empty())
+		{
+			//패킷 가져오기
+			std::queue<cPacketTCP*>	qTargetSendQueue;
+			{
+				mAMTX(m_mtxTargetSendMutex);
+				std::swap(qTargetSendQueue, m_qTargetSendQueue);
+			}
+
+			//순서대로 처리해준다
+			cPacketTCP* pPacket = qTargetSendQueue.front();
+			qTargetSendQueue.pop();
+			
+			std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.find(pPacket->m_Sock);
+
+			//패킷 대상이 누수방지를 위해 없으면 지워준다
+			if(iter == m_mapTCPSocket.end())
+				delete pPacket;
+			else
+				iter->second->pushSend(pPacket);
+		}
+
+		//모든 대상 패킷 처리
+		if(!m_qGlobalSendQueue.empty())
+		{
+			mAMTX(m_mtxGlobalSendMutex);
+			std::swap(qGlobalSendQueue, m_qGlobalSendQueue);
+		}
+		else
+		{
+			bIsNotHaveSend = true;
 		}
 
 		//패킷 송수신 처리
@@ -100,7 +127,7 @@ void cTCPSocketServer::operateThread()
 				//전역송신 패킷 있으면 그거 보내주기
 				if(bIsNotHaveSend == false)
 				{
-					std::queue<cPacketTCP*> qSendQueue = m_qSendQueue;
+					std::queue<cPacketTCP*> qSendQueue = qGlobalSendQueue;
 					while(!qSendQueue.empty())
 					{
 						cPacketTCP* lpPacket = qSendQueue.front();
@@ -111,12 +138,12 @@ void cTCPSocketServer::operateThread()
 			}
 		}
 
-		//송신한 패킷 지우기
-		while(!m_qSendQueue.empty())
+		//송신한 전역 패킷 지우기
+		while(!qGlobalSendQueue.empty())
 		{
-			cPacketTCP* qSendQueue = m_qSendQueue.front();
-			m_qSendQueue.pop();
-			KILL(qSendQueue);
+			cPacketTCP* qSendQueue = qGlobalSendQueue.front();
+			qGlobalSendQueue.pop();
+			delete qSendQueue;
 		}
 
 		//삭제하려는거 map에서 제거
@@ -273,23 +300,23 @@ void cTCPSocketServer::stopThread()
 
 	m_mapTCPSocket.clear();
 
-	while(!m_qSendQueue.empty())
+	while(!m_qGlobalSendQueue.empty())
 	{
-		cPacketTCP* pPacket = m_qSendQueue.front();
-		m_qSendQueue.pop();
-		KILL(pPacket);
+		cPacketTCP* pPacket = m_qGlobalSendQueue.front();
+		m_qGlobalSendQueue.pop();
+		delete pPacket;
 	}
-	while(!m_qSendWaitQueue.empty())
+	while(!m_qTargetSendQueue.empty())
 	{
-		cPacketTCP* pPacket = m_qSendWaitQueue.front();
-		m_qSendWaitQueue.pop();
-		KILL(pPacket);
+		cPacketTCP* pPacket = m_qTargetSendQueue.front();
+		m_qTargetSendQueue.pop();
+		delete pPacket;
 	}
 	while(!m_qRecvQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qRecvQueue.front();
 		m_qRecvQueue.pop();
-		KILL(pPacket);
+		delete pPacket;
 	}
 
 	//상태 재설정

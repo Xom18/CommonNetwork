@@ -56,17 +56,19 @@ void cTCPSocket::sendThread()//송신 스레드
 		if(m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN)
 			break;
 
+		//송신 큐가 비어있다
 		if(m_qSendQueue.empty())
-		{//비어있으면 대기큐꺼 가져온다
-			commitSendWaitQueue();
-
-			//대기큐꺼도 비어있으면 10ms동안 대기
-			if(m_qSendQueue.empty())
-			{
-				std::chrono::milliseconds TimeMS(10);
-				std::this_thread::sleep_for(TimeMS);
-			}
+		{
+			std::chrono::milliseconds TimeMS(10);
+			std::this_thread::sleep_for(TimeMS);
 			continue;
+		}
+		
+		//큐에 있는걸 가져온다
+		std::queue<cPacketTCP*>	qSendQueue;
+		{
+			mAMTX(m_mtxSendMutex);
+			std::swap(qSendQueue, m_qSendQueue);
 		}
 
 		ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
@@ -74,13 +76,15 @@ void cTCPSocket::sendThread()//송신 스레드
 		int iDataSize = 0;		//데이터 크기
 
 		{//전송을 위해 패킷을 꺼냈다
-			cPacketTCP* lpPacket = m_qSendQueue.front();
-			iDataSize = lpPacket->m_iSize;
-			memcpy(&AddrInfo, &lpPacket->m_Sock, sizeof(AddrInfo));
-			memcpy(pSendBuffer, lpPacket->m_pData, iDataSize);
+			cPacketTCP* pPacket = qSendQueue.front();
+			iDataSize = pPacket->m_iSize;
+			memcpy(&AddrInfo, &pPacket->m_Sock, sizeof(AddrInfo));
+			memcpy(pSendBuffer, pPacket->m_pData, iDataSize);
 			//누수없게 바로 해제
-			m_qSendQueue.pop();
-			delete lpPacket;
+			qSendQueue.pop();
+
+			//null일 일이 없으니 null체크 없이 바로
+			delete pPacket;
 		}
 		
 		if(send(m_Sock, pSendBuffer, iDataSize, 0) == SOCKET_ERROR)
@@ -196,12 +200,6 @@ void cTCPSocket::stoppingThread()
 	{
 		cPacketTCP* pPacket = m_qSendQueue.front();
 		m_qSendQueue.pop();
-		KILL(pPacket);
-	}
-	while(!m_qSendWaitQueue.empty())
-	{
-		cPacketTCP* pPacket = m_qSendWaitQueue.front();
-		m_qSendWaitQueue.pop();
 		KILL(pPacket);
 	}
 	while(!m_qRecvQueue.empty())

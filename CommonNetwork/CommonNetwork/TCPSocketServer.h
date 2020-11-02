@@ -19,13 +19,14 @@
 class cTCPSocketServer
 {
 private:
-	std::mutex m_mtxSendMutex;					//송신 뮤텍스(전체)
+	std::mutex m_mtxGlobalSendMutex;			//송신 뮤텍스(전체)
+	std::mutex m_mtxTargetSendMutex;			//송신 뮤텍스(전체)
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
 	std::mutex m_mtxConnectionMutex;			//연결 대기 뮤텍스
 	std::mutex m_mtxSocketMutex;				//연결 뮤텍스
 
-	std::queue<cPacketTCP*>	m_qSendQueue;		//송신 큐
-	std::queue<cPacketTCP*>	m_qSendWaitQueue;	//송신 대기 큐
+	std::queue<cPacketTCP*>	m_qGlobalSendQueue;	//전역 송신 큐
+	std::queue<cPacketTCP*>	m_qTargetSendQueue;	//대상 송신 큐
 	std::queue<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 
 	std::thread* m_pConnectThread;				//연결 대기 스레드
@@ -88,19 +89,6 @@ private:
 		}
 	}
 
-	/// <summary>
-	/// 송신큐 대기큐에 있는걸 송신큐에 넣는 함수
-	//	sendThread에서 있는 패킷 다 처리한다음에 호출해야 되는 부분
-	/// </summary>
-	inline void commitSendWaitQueue()
-	{
-		//혹시 송신대기로 올리는 중인게 있을 수 있으니 락
-		mAMTX(m_mtxSendMutex);
-		if(m_qSendWaitQueue.empty())
-			return;
-		std::swap(m_qSendQueue, m_qSendWaitQueue);
-	}
-
 public:
 	/// <summary>
 	/// 소켓 시작
@@ -148,8 +136,8 @@ public:
 
 		cPacketTCP* pPacket = new cPacketTCP();
 		pPacket->setData(_iSize, _lpData);
-		mAMTX(m_mtxSendMutex);
-		m_qSendWaitQueue.push(pPacket);
+		mAMTX(m_mtxGlobalSendMutex);
+		m_qGlobalSendQueue.push(pPacket);
 	}
 
 	/// <summary>
@@ -159,13 +147,19 @@ public:
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
 	/// <returns></returns>
-	inline bool sendTarget(SOCKET _Socket, int _iSize, char* _lpData)
+	inline void sendTarget(SOCKET _Socket, int _iSize, char* _lpData)
 	{
-		mAMTX(m_mtxSocketMutex);
-		std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.find(_Socket);
-		if(iter == m_mapTCPSocket.end())
-			return false;
-		iter->second->pushSend(_iSize, _lpData);
+		//UDP는 패킷 크기가 커질수록 도착할 확률이 낮아져서 일부러 작게함
+		if(_iSize >= _MAX_TCP_DATA_SIZE)
+		{
+			printf("패킷 크기 너무 큼 %d\n", _iSize);
+			return;
+		}
+
+		cPacketTCP* pPacket = new cPacketTCP();
+		pPacket->setData(_iSize, _lpData, _Socket);
+		mAMTX(m_mtxTargetSendMutex);
+		m_qTargetSendQueue.push(pPacket);
 	}
 
 	/// <summary>

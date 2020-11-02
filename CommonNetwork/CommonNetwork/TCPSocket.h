@@ -25,7 +25,6 @@ private:
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
 
 	std::queue<cPacketTCP*>	m_qSendQueue;		//송신 큐
-	std::queue<cPacketTCP*>	m_qSendWaitQueue;	//송신 대기 큐
 	std::queue<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 	std::thread* m_pRecvThread;					//수신 스레드
 	std::thread* m_pSendThread;					//송신 스레드
@@ -67,19 +66,6 @@ private:
 	/// 전역송신이 대상인 패킷만 여기서 처리
 	/// </summary>
 	void sendThread();
-
-	/// <summary>
-	/// 송신큐 대기큐에 있는걸 송신큐에 넣는 함수
-	//	sendThread에서 있는 패킷 다 처리한다음에 호출해야 되는 부분
-	/// </summary>
-	inline void commitSendWaitQueue()
-	{
-		//혹시 송신대기로 올리는 중인게 있을 수 있으니 락
-		mAMTX(m_mtxSendMutex);
-		if(m_qSendWaitQueue.empty())
-			return;
-		std::swap(m_qSendQueue, m_qSendWaitQueue);
-	}
 
 	/// <summary>
 	/// 수신받을걸 수신큐에 넣는 함수
@@ -157,7 +143,17 @@ public:
 		cPacketTCP* pPacket = new cPacketTCP();
 		pPacket->setData(_iSize, _lpData);
 		mAMTX(m_mtxSendMutex);
-		m_qSendWaitQueue.push(pPacket);
+		m_qSendQueue.push(pPacket);
+	}
+
+	/// <summary>
+	/// 동적할당 되있는 패킷을 바로 송신큐에 넣는곳
+	/// </summary>
+	/// <param name="_pPacket">동적할당 되있는 패킷</param>
+	inline void pushSend(cPacketTCP* _pPacket)
+	{
+		mAMTX(m_mtxSendMutex);
+		m_qSendQueue.push(_pPacket);
 	}
 
 	/// <summary>
