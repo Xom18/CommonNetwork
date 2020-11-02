@@ -64,7 +64,7 @@ void cUDPSocket::sendThread()//송신 스레드
 		}
 
 		//큐에 있는걸 가져온다
-		std::queue<cPacketUDP*>	qSendQueue;
+		std::deque<cPacketUDP*>	qSendQueue;
 		{
 			mAMTX(m_mtxSendMutex);
 			std::swap(qSendQueue, m_qSendQueue);
@@ -80,7 +80,7 @@ void cUDPSocket::sendThread()//송신 스레드
 			memcpy(&AddrInfo, &lpPacket->m_AddrInfo, sizeof(AddrInfo));
 			memcpy(pSendBuffer, lpPacket->m_pData, iDataSize);
 			//누수없게 바로 해제
-			qSendQueue.pop();
+			qSendQueue.pop_front();
 			delete lpPacket;
 		}
 
@@ -97,7 +97,7 @@ void cUDPSocket::sendThread()//송신 스레드
 }
 
 //스레드 시작
-void cUDPSocket::beginThread(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
+void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 {
 	if (m_pSendThread != nullptr
 	|| m_pRecvThread != nullptr)
@@ -150,7 +150,7 @@ void cUDPSocket::beginThread(bool _bIsServer, char* _csIP, int _iPort, int _iTim
 }
 
 //스레드 정지
-void cUDPSocket::stopThread()
+void cUDPSocket::stop()
 {
 	//스레드가 멈춰있으면 의미없으니 return
 	if (m_iStatus == eTHREAD_STATUS_IDLE
@@ -163,6 +163,14 @@ void cUDPSocket::stopThread()
 	//소켓 닫음
 	closesocket(m_Sock);
 
+	//중단처리 스레드
+	if(m_pStoppingThread != nullptr)
+		KILL(m_pStoppingThread);
+	m_pStoppingThread = new std::thread([&]() {stoppingThread(); });
+}
+
+void cUDPSocket::stoppingThread()
+{
 	//스레드 정지 대기
 	m_pSendThread->join();
 	m_pRecvThread->join();
@@ -175,19 +183,17 @@ void cUDPSocket::stopThread()
 	while(!m_qSendQueue.empty())
 	{
 		cPacketUDP* pPacket = m_qSendQueue.front();
-		m_qSendQueue.pop();
+		m_qSendQueue.pop_front();
 		delete pPacket;
 	}
 
 	while(!m_qRecvQueue.empty())
 	{
 		cPacketUDP* pPacket = m_qRecvQueue.front();
-		m_qRecvQueue.pop();
+		m_qRecvQueue.pop_front();
 		delete pPacket;
 	}
 
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
-
-//	WSACleanup();
 }

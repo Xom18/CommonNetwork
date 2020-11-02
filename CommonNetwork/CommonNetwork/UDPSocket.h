@@ -19,10 +19,11 @@ private:
 	std::mutex m_mtxSendMutex;					//송신 뮤텍스
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
 
-	std::queue<cPacketUDP*>	m_qSendQueue;		//송신 큐
-	std::queue<cPacketUDP*>	m_qRecvQueue;		//수신 큐
+	std::deque<cPacketUDP*>	m_qSendQueue;		//송신 큐
+	std::deque<cPacketUDP*>	m_qRecvQueue;		//수신 큐
 	std::thread* m_pSendThread;					//송신 스레드
 	std::thread* m_pRecvThread;					//수신 스레드
+	std::thread* m_pStoppingThread;				//중단 스레드
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
 	int		m_iPort;							//포트
 	SOCKET	m_Sock;								//소켓
@@ -33,13 +34,19 @@ public:
 	{
 		m_pSendThread = nullptr;	//송신 스레드
 		m_pRecvThread = nullptr;	//수신 스레드
+		m_pStoppingThread = nullptr;//중단 스레드
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
 		m_iPort = _DEFAULT_PORT;	//포트
+		m_Sock = INVALID_SOCKET;
+		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));
 	};
 
 	~cUDPSocket()//소멸자
 	{
-		stopThread();
+		stop();
+		if(m_pStoppingThread != nullptr)
+			m_pStoppingThread->join();
+		KILL(m_pStoppingThread);
 	}
 
 
@@ -63,8 +70,14 @@ private:
 	inline void pushRecvQueue(cPacketUDP* _lpPacket)
 	{
 		mAMTX(m_mtxRecvMutex);
-		m_qRecvQueue.push(_lpPacket);
+		m_qRecvQueue.push_back(_lpPacket);
 	}
+
+	/// <summary>
+	/// 중단 마무리 스레드
+	/// </summary>
+	void stoppingThread();
+
 public:
 	/// <summary>
 	/// 소켓 시작
@@ -72,12 +85,12 @@ public:
 	/// <param name="_bIsServer">서버인지 클라인지</param>
 	/// <param name="_csIP">IP주소, nullptr이면 ADDR_ANY</param>
 	/// <param name="_iPort">포트번호</param>
-	void beginThread(bool _bIsServer, char* _csIP = nullptr, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT);
+	void begin(bool _bIsServer, char* _csIP = nullptr, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT);
 
 	/// <summary>
 	/// 스레드 정지
 	/// </summary>
-	void stopThread();
+	void stop();
 
 	/// <summary>
 	/// 소켓 상태 받아오는 함수, -1 정지요청, 0 정지, 1 돌아가는중
@@ -115,26 +128,39 @@ public:
 		cPacketUDP* pPacket = new cPacketUDP();
 		pPacket->setData(_iSize, _lpData, _lpAddrInfo);
 		mAMTX(m_mtxSendMutex);
-		m_qSendQueue.push(pPacket);
+		m_qSendQueue.push_back(pPacket);
 	}
 
 	/// <summary>
-	/// 수신 큐 내용물 자체를 복사
+	/// 수신된 패킷 큐에 있는걸 받아오는거
 	/// </summary>
-	/// <param name="_lpQueue">복사 뜰 버퍼</param>
-	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
-	inline void copyRecvQueue(std::queue<cPacketUDP*>* _lpQueue, bool _bWithClear = true)
+	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
+	/// <param name="_bFlush">수신 큐 초기화 여부</param>
+	inline bool getRecvQueue(std::deque<cPacketUDP*>* _lpQueue, bool _bFlush = true)
 	{
-		mAMTX(m_mtxRecvMutex);
-		if (m_qRecvQueue.empty())
-			return;
-		*_lpQueue = m_qRecvQueue;
+		if(m_qRecvQueue.empty())
+			return false;
 
-		//초기화 요청에 따른 초기화
-		if (_bWithClear)
-		{
-			std::queue<cPacketUDP*>	qRecvQueue;
-			std::swap(m_qRecvQueue, qRecvQueue);
-		}
+		mAMTX(m_mtxRecvMutex);
+		_lpQueue->insert(_lpQueue->end(), m_qRecvQueue.begin(), m_qRecvQueue.end());
+
+		if(_bFlush)
+			m_qRecvQueue.clear();
+		return true;
+	}
+
+	/// <summary>
+	/// 마찬가지로 수신된 패킷 큐에 있는걸 받아오는거
+	/// getRecvQueue와 다르게 인자로 들어온 변수에 덮어쓰는거
+	/// </summary>
+	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
+	inline bool swapRecvQueue(std::deque<cPacketUDP*>* _lpQueue)
+	{
+		if(m_qRecvQueue.empty())
+			return false;
+
+		mAMTX(m_mtxRecvMutex);
+		std::swap(m_qRecvQueue, *_lpQueue);
+		return true;
 	}
 };

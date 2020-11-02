@@ -65,4 +65,7 @@
   <ItemGroup>
     <None Include="..\.editorconfig" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="사용법.txt" />
+  </ItemGroup>
 </Project>

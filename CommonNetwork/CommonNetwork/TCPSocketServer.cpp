@@ -66,14 +66,11 @@ void cTCPSocketServer::operateThread()
 		//연결 대기중인거 처리
 		operateConnectWait();
 
-		bool bIsNotHaveSend = false;
-		std::queue<cPacketTCP*>	qGlobalSendQueue;
-
 		//특정 대상 패킷 처리
 		if(!m_qTargetSendQueue.empty())
 		{
 			//패킷 가져오기
-			std::queue<cPacketTCP*>	qTargetSendQueue;
+			std::deque<cPacketTCP*>	qTargetSendQueue;
 			{
 				mAMTX(m_mtxTargetSendMutex);
 				std::swap(qTargetSendQueue, m_qTargetSendQueue);
@@ -81,7 +78,7 @@ void cTCPSocketServer::operateThread()
 
 			//순서대로 처리해준다
 			cPacketTCP* pPacket = qTargetSendQueue.front();
-			qTargetSendQueue.pop();
+			qTargetSendQueue.pop_front();
 			
 			std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.find(pPacket->m_Sock);
 
@@ -91,6 +88,9 @@ void cTCPSocketServer::operateThread()
 			else
 				iter->second->pushSend(pPacket);
 		}
+
+		bool bIsNotHaveSend = false;
+		std::deque<cPacketTCP*>	qGlobalSendQueue;
 
 		//모든 대상 패킷 처리
 		if(!m_qGlobalSendQueue.empty())
@@ -121,19 +121,14 @@ void cTCPSocketServer::operateThread()
 				//패킷 수신 처리
 				{
 					mAMTX(m_mtxRecvMutex);
-					lpTCPSocket->pushbackAllRecvQueue(&m_qRecvQueue);
+					lpTCPSocket->getRecvQueue(&m_qRecvQueue);
 				}
 
 				//전역송신 패킷 있으면 그거 보내주기
 				if(bIsNotHaveSend == false)
 				{
-					std::queue<cPacketTCP*> qSendQueue = qGlobalSendQueue;
-					while(!qSendQueue.empty())
-					{
-						cPacketTCP* lpPacket = qSendQueue.front();
-						lpTCPSocket->pushSend(lpPacket->m_iSize, lpPacket->m_pData);
-						qSendQueue.pop();
-					}
+					std::deque<cPacketTCP*> qSendQueue = qGlobalSendQueue;
+					lpTCPSocket->pushSend(&qSendQueue);
 				}
 			}
 		}
@@ -142,7 +137,7 @@ void cTCPSocketServer::operateThread()
 		while(!qGlobalSendQueue.empty())
 		{
 			cPacketTCP* qSendQueue = qGlobalSendQueue.front();
-			qGlobalSendQueue.pop();
+			qGlobalSendQueue.pop_front();
 			delete qSendQueue;
 		}
 
@@ -184,7 +179,7 @@ void cTCPSocketServer::operateThread()
 }
 
 //스레드 시작
-void cTCPSocketServer::beginThread(int _iPort, int _iTimeOut, bool _bUseNoDelay)
+void cTCPSocketServer::begin(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 {
 	if(m_pConnectThread != nullptr
 	|| m_pOperateThread != nullptr)
@@ -243,7 +238,7 @@ void cTCPSocketServer::beginThread(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 }
 
 //스레드 정지
-void cTCPSocketServer::stopThread()
+void cTCPSocketServer::stop()
 {
 	//스레드가 멈춰있으면 의미없으니 return
 	if(m_iStatus == eTHREAD_STATUS_IDLE
@@ -271,7 +266,7 @@ void cTCPSocketServer::stopThread()
 	std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.begin();
 	for(; iter != m_mapTCPSocket.end(); ++iter)
 	{
-		iter->second->stopThread();
+		iter->second->stop();
 	}
 
 	//연결중인거 해제
@@ -303,19 +298,19 @@ void cTCPSocketServer::stopThread()
 	while(!m_qGlobalSendQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qGlobalSendQueue.front();
-		m_qGlobalSendQueue.pop();
+		m_qGlobalSendQueue.pop_front();
 		delete pPacket;
 	}
 	while(!m_qTargetSendQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qTargetSendQueue.front();
-		m_qTargetSendQueue.pop();
+		m_qTargetSendQueue.pop_front();
 		delete pPacket;
 	}
 	while(!m_qRecvQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qRecvQueue.front();
-		m_qRecvQueue.pop();
+		m_qRecvQueue.pop_front();
 		delete pPacket;
 	}
 

@@ -25,13 +25,12 @@ private:
 	std::mutex m_mtxConnectionMutex;			//연결 대기 뮤텍스
 	std::mutex m_mtxSocketMutex;				//연결 뮤텍스
 
-	std::queue<cPacketTCP*>	m_qGlobalSendQueue;	//전역 송신 큐
-	std::queue<cPacketTCP*>	m_qTargetSendQueue;	//대상 송신 큐
-	std::queue<cPacketTCP*>	m_qRecvQueue;		//수신 큐
+	std::deque<cPacketTCP*>	m_qGlobalSendQueue;	//전역 송신 큐
+	std::deque<cPacketTCP*>	m_qTargetSendQueue;	//대상 송신 큐
+	std::deque<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 
 	std::thread* m_pConnectThread;				//연결 대기 스레드
 	std::thread* m_pOperateThread;				//처리 스레드(패킷수신, 전역송신)
-	std::thread* m_pSendThread;					//처리 스레드
 
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
 	int		m_iPort;							//포트
@@ -49,11 +48,13 @@ public:
 		m_pOperateThread = nullptr;	//수신 스레드
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
 		m_iPort = _DEFAULT_PORT;	//포트
+		m_Sock = INVALID_SOCKET;
+		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));
 	};
 
 	~cTCPSocketServer()//소멸자
 	{
-		stopThread();
+		stop();
 	}
 
 private:
@@ -94,12 +95,12 @@ public:
 	/// 소켓 시작
 	/// </summary>
 	/// <param name="_iPort">포트번호(기본 58326)</param>
-	void beginThread(int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
+	void begin(int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
 
 	/// <summary>
 	/// 스레드 정지
 	/// </summary>
-	void stopThread();
+	void stop();
 
 	/// <summary>
 	/// 소켓 상태 받아오는 함수, -1 정지요청, 0 정지, 1 돌아가는중
@@ -127,17 +128,10 @@ public:
 	/// <param name="_lpData">데이터</param>
 	inline void sendAll(int _iSize, char* _lpData)
 	{
-		//UDP는 패킷 크기가 커질수록 도착할 확률이 낮아져서 일부러 작게함
-		if(_iSize >= _MAX_TCP_DATA_SIZE)
-		{
-			printf("패킷 크기 너무 큼 %d\n", _iSize);
-			return;
-		}
-
 		cPacketTCP* pPacket = new cPacketTCP();
 		pPacket->setData(_iSize, _lpData);
 		mAMTX(m_mtxGlobalSendMutex);
-		m_qGlobalSendQueue.push(pPacket);
+		m_qGlobalSendQueue.push_back(pPacket);
 	}
 
 	/// <summary>
@@ -149,36 +143,42 @@ public:
 	/// <returns></returns>
 	inline void sendTarget(SOCKET _Socket, int _iSize, char* _lpData)
 	{
-		//UDP는 패킷 크기가 커질수록 도착할 확률이 낮아져서 일부러 작게함
-		if(_iSize >= _MAX_TCP_DATA_SIZE)
-		{
-			printf("패킷 크기 너무 큼 %d\n", _iSize);
-			return;
-		}
-
 		cPacketTCP* pPacket = new cPacketTCP();
 		pPacket->setData(_iSize, _lpData, _Socket);
 		mAMTX(m_mtxTargetSendMutex);
-		m_qTargetSendQueue.push(pPacket);
+		m_qTargetSendQueue.push_back(pPacket);
 	}
 
 	/// <summary>
-	/// 수신 큐 내용물 자체를 복사
+	/// 수신된 패킷 큐에 있는걸 받아오는거
 	/// </summary>
-	/// <param name="_lpQueue">복사 뜰 버퍼</param>
-	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
-	inline void copyRecvQueue(std::queue<cPacketTCP*>* _lpQueue, bool _bWithClear = true)
+	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
+	/// <param name="_bFlush">수신 큐 초기화 여부</param>
+	inline bool getRecvQueue(std::deque<cPacketTCP*>* _lpQueue, bool _bFlush = true)
 	{
-		mAMTX(m_mtxRecvMutex);
 		if(m_qRecvQueue.empty())
-			return;
-		*_lpQueue = m_qRecvQueue;
+			return false;
 
-		//초기화 요청에 따른 초기화
-		if(_bWithClear)
-		{
-			std::queue<cPacketTCP*>	qRecvQueue;
-			std::swap(m_qRecvQueue, qRecvQueue);
-		}
+		mAMTX(m_mtxRecvMutex);
+		_lpQueue->insert(_lpQueue->end(), m_qRecvQueue.begin(), m_qRecvQueue.end());
+
+		if(_bFlush)
+			m_qRecvQueue.clear();
+		return true;
+	}
+
+	/// <summary>
+	/// 마찬가지로 수신된 패킷 큐에 있는걸 받아오는거
+	/// getRecvQueue와 다르게 인자로 들어온 변수에 덮어쓰는거
+	/// </summary>
+	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
+	inline bool swapRecvQueue(std::deque<cPacketTCP*>* _lpQueue)
+	{
+		if(m_qRecvQueue.empty())
+			return false;
+
+		mAMTX(m_mtxRecvMutex);
+		std::swap(m_qRecvQueue, *_lpQueue);
+		return true;
 	}
 };

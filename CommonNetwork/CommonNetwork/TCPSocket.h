@@ -24,8 +24,8 @@ private:
 	std::mutex m_mtxSendMutex;					//송신 뮤텍스
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
 
-	std::queue<cPacketTCP*>	m_qSendQueue;		//송신 큐
-	std::queue<cPacketTCP*>	m_qRecvQueue;		//수신 큐
+	std::deque<cPacketTCP*>	m_qSendQueue;		//송신 큐
+	std::deque<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 	std::thread* m_pRecvThread;					//수신 스레드
 	std::thread* m_pSendThread;					//송신 스레드
 	std::thread* m_pStoppingThread;				//중단 스레드
@@ -38,12 +38,13 @@ public:
 		m_pStoppingThread = nullptr;
 		m_lpMasterStatus = nullptr;
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
-		m_Sock = 0;
+		m_Sock = INVALID_SOCKET;
+		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));
 	};
 
 	~cTCPSocket()//소멸자
 	{
-		stopThread();
+		stop();
 		if(m_pStoppingThread != nullptr)
 			m_pStoppingThread->join();
 		KILL(m_pStoppingThread);
@@ -74,10 +75,18 @@ private:
 	inline void pushRecvQueue(cPacketTCP* _lpPacket)
 	{
 		mAMTX(m_mtxRecvMutex);
-		m_qRecvQueue.push(_lpPacket);
+		m_qRecvQueue.push_back(_lpPacket);
 	}
 
 public:
+	/// <summary>
+	/// 소켓 받아오기
+	/// </summary>
+	/// <returns>m_Sock</returns>
+	inline SOCKET getSocket()
+	{
+		return m_Sock;
+	}
 
 	/// <summary>
 	/// 이쪽이 서버일경우 accept된걸 셋팅하는쪽
@@ -106,7 +115,7 @@ public:
 	/// <summary>
 	/// 스레드 정지
 	/// </summary>
-	void stopThread();
+	void stop();
 
 	/// <summary>
 	/// 소켓 상태 받아오는 함수, -1 정지요청, 0 정지, 1 돌아가는중
@@ -134,16 +143,10 @@ public:
 	/// <param name="_lpData">데이터</param>
 	inline void pushSend(int _iSize, char* _lpData)
 	{
-		if(_iSize >= _MAX_TCP_DATA_SIZE)
-		{
-			printf("패킷 크기 너무 큼 %d\n", _iSize);
-			return;
-		}
-
 		cPacketTCP* pPacket = new cPacketTCP();
 		pPacket->setData(_iSize, _lpData);
 		mAMTX(m_mtxSendMutex);
-		m_qSendQueue.push(pPacket);
+		m_qSendQueue.push_back(pPacket);
 	}
 
 	/// <summary>
@@ -153,54 +156,57 @@ public:
 	inline void pushSend(cPacketTCP* _pPacket)
 	{
 		mAMTX(m_mtxSendMutex);
-		m_qSendQueue.push(_pPacket);
+		m_qSendQueue.push_back(_pPacket);
 	}
 
 	/// <summary>
-	/// 수신 큐 내용물 자체를 복사
+	/// 전역송신 할 때 사용하는 큐에있는 패킷 일괄 처리
 	/// </summary>
-	/// <param name="_lpQueue">복사 뜰 버퍼</param>
-	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
-	inline void copyRecvQueue(std::queue<cPacketTCP*>* _lpQueue, bool _bWithClear = true)
+	/// <param name="_pPacket">동적할당 되있는 패킷</param>
+	inline void pushSend(std::deque<cPacketTCP*>* _lpPacketQueue)
 	{
-		mAMTX(m_mtxRecvMutex);
-		if(m_qRecvQueue.empty())
-			return;
-		*_lpQueue = m_qRecvQueue;
-
-		//초기화 요청에 따른 초기화
-		if(_bWithClear)
+		mAMTX(m_mtxSendMutex);
+		while(!_lpPacketQueue->empty())
 		{
-			std::queue<cPacketTCP*>	qRecvQueue;
-			std::swap(m_qRecvQueue, qRecvQueue);
+			//패킷을 그대로 복사해서 추가
+			cPacketTCP* pFrontPacket = _lpPacketQueue->front();
+			_lpPacketQueue->pop_front();
+			cPacketTCP* pPacket = new cPacketTCP();
+			pPacket->setData(pFrontPacket->m_iSize, pFrontPacket->m_pData, m_Sock);
+			m_qSendQueue.push_back(pPacket);
 		}
 	}
 
 	/// <summary>
-	/// 수신 큐 내용물 자체를 이어붙이는거
+	/// 수신된 패킷 큐에 있는걸 받아오는거
 	/// </summary>
-	/// <param name="_lpQueue">뒤에 이어붙일 큐</param>
-	/// <param name="_lpQueue">수신 큐 초기화 여부 false 초기화 안함, true 초기화</param>
-	inline void pushbackAllRecvQueue(std::queue<cPacketTCP*>* _lpQueue)
+	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
+	/// <param name="_bFlush">수신 큐 초기화 여부</param>
+	inline bool getRecvQueue(std::deque<cPacketTCP*>* _lpQueue, bool _bFlush = true)
 	{
 		if(m_qRecvQueue.empty())
-			return;
+			return false;
 
 		mAMTX(m_mtxRecvMutex);
-		while(!m_qRecvQueue.empty())
-		{
-			cPacketTCP* lpPacket = m_qRecvQueue.front();
-			_lpQueue->push(lpPacket);
-			m_qRecvQueue.pop();
-		}
+		_lpQueue->insert(_lpQueue->end(), m_qRecvQueue.begin(), m_qRecvQueue.end());
+
+		if(_bFlush)
+			m_qRecvQueue.clear();
+		return true;
 	}
 
 	/// <summary>
-	/// 소켓 받아오기
+	/// 마찬가지로 수신된 패킷 큐에 있는걸 받아오는거
+	/// getRecvQueue와 다르게 인자로 들어온 변수에 덮어쓰는거
 	/// </summary>
-	/// <returns>m_Sock</returns>
-	inline SOCKET getSocket()
+	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
+	inline bool swapRecvQueue(std::deque<cPacketTCP*>* _lpQueue)
 	{
-		return m_Sock;
+		if(m_qRecvQueue.empty())
+			return false;
+
+		mAMTX(m_mtxRecvMutex);
+		std::swap(m_qRecvQueue, *_lpQueue);
+		return true;
 	}
 };

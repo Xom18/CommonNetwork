@@ -65,7 +65,7 @@ void cTCPSocket::sendThread()//송신 스레드
 		}
 		
 		//큐에 있는걸 가져온다
-		std::queue<cPacketTCP*>	qSendQueue;
+		std::deque<cPacketTCP*>	qSendQueue;
 		{
 			mAMTX(m_mtxSendMutex);
 			std::swap(qSendQueue, m_qSendQueue);
@@ -81,7 +81,7 @@ void cTCPSocket::sendThread()//송신 스레드
 			memcpy(&AddrInfo, &pPacket->m_Sock, sizeof(AddrInfo));
 			memcpy(pSendBuffer, pPacket->m_pData, iDataSize);
 			//누수없게 바로 해제
-			qSendQueue.pop();
+			qSendQueue.pop_front();
 
 			//null일 일이 없으니 null체크 없이 바로
 			delete pPacket;
@@ -167,7 +167,7 @@ void cTCPSocket::beginThread()
 }
 
 //스레드 정지
-void cTCPSocket::stopThread()
+void cTCPSocket::stop()
 {
 	//스레드가 멈춰있으면 의미없으니 return
 	if(m_iStatus == eTHREAD_STATUS_IDLE
@@ -199,13 +199,13 @@ void cTCPSocket::stoppingThread()
 	while(!m_qSendQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qSendQueue.front();
-		m_qSendQueue.pop();
+		m_qSendQueue.pop_front();
 		KILL(pPacket);
 	}
 	while(!m_qRecvQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qRecvQueue.front();
-		m_qRecvQueue.pop();
+		m_qRecvQueue.pop_front();
 		KILL(pPacket);
 	}
 
