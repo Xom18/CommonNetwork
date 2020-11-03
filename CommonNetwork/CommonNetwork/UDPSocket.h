@@ -86,7 +86,7 @@ public:
 	/// <param name="_bIsServer">서버인지 클라인지</param>
 	/// <param name="_csIP">IP주소, nullptr이면 ADDR_ANY</param>
 	/// <param name="_iPort">포트번호</param>
-	void begin(bool _bIsServer, char* _csIP = nullptr, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT);
+	bool begin(bool _bIsServer, char* _csIP = nullptr, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT);
 
 	/// <summary>
 	/// 스레드 정지

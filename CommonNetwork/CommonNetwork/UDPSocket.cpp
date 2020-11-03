@@ -23,12 +23,9 @@ void cUDPSocket::recvThread()
 		ZeroMemory(&Client, sizeof(Client));
 
 		//데이터 수신
-		int iDataLength = recvfrom((int)m_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0, (sockaddr*)&Client, &ClientAddrLength);
+		int iDataLength = recvfrom(m_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0, (sockaddr*)&Client, &ClientAddrLength);
 		if (iDataLength == SOCKET_ERROR)
-		{
-//			printf("수신에러\n");
 			continue;
-		}
 
 		//받은 데이터 처리
 		cPacketUDP* pPacket = new cPacketUDP();
@@ -36,12 +33,6 @@ void cUDPSocket::recvThread()
 
 		//큐에 넣는다
 		pushRecvQueue(pPacket);
-
-		//송신자 IP보려고 넣어둔거, 주석
-		//char clientIP[256];
-		//ZeroMemory(clientIP, sizeof(clientIP));
-		//inet_ntop(AF_INET, &client.sin_addr, clientIP, sizeof(clientIP));
-		//printf("%s : %s\n", clientIP, pRecvBuffer);
 	}
 
 	pKILL(pRecvBuffer);
@@ -85,7 +76,6 @@ void cUDPSocket::sendThread()//송신 스레드
 			delete lpPacket;
 		}
 
-
 		if (sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
 		{//송신실패하면 에러
 			mLOG("Send Error %d", m_iPort);
@@ -98,7 +88,7 @@ void cUDPSocket::sendThread()//송신 스레드
 }
 
 //스레드 시작
-void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
+bool cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 {
 	mLOG("Begin [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
 
@@ -106,7 +96,7 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	|| m_pRecvThread != nullptr)
 	{
 		mLOG("Begin error [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP , _iPort);
-		return;
+		return false;
 	}
 
 	WSADATA wsaData;							//윈속 데이터
@@ -115,7 +105,7 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	if (iWSOK != 0)
 	{
 		mLOG("Socket start error [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
-		ExitProcess(EXIT_FAILURE);
+		return false;
 	}
 
 	m_iPort = _iPort;									//포트
@@ -132,7 +122,7 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
 	{
 		mLOG("Timeout setting fail [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
-		return;
+		return false;
 	}
 
 	//서버라면 바인딩 필요
@@ -142,7 +132,7 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 		if (bind(m_Sock, (sockaddr*)&m_SockInfo, sizeof(sockaddr_in)) != 0)
 		{
 			mLOG("Bind error [%s]%s : %d [%d]", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort, WSAGetLastError());
-			return;
+			return false;
 		}
 	}
 
@@ -150,6 +140,8 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	m_iStatus = eTHREAD_STATUS_RUN;
 	m_pRecvThread = new std::thread([&]() {recvThread(); });
 	m_pSendThread = new std::thread([&]() {sendThread(); });
+
+	return true;
 }
 
 //스레드 정지

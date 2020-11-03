@@ -29,11 +29,6 @@ void cTCPSocketServer::connectThread()
 		pNewSocket->setSocket(Socket, &Client, ClientAddrLength, &m_iStatus);
 		pNewSocket->begin();
 
-		//연결된거 IP보려고 넣어둔거, 주석
-		//char clientIP[256];
-		//ZeroMemory(clientIP, sizeof(clientIP));
-		//inet_ntop(AF_INET, &Client.sin_addr, clientIP, sizeof(clientIP));
-
 		//연결대기에 추가
 		{
 			mAMTX(m_mtxConnectionMutex);
