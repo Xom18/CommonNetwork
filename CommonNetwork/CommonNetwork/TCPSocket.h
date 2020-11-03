@@ -55,11 +55,6 @@ public:
 
 private:
 	/// <summary>
-	/// 연결 스레드
-	/// </summary>
-	void connectThread();
-
-	/// <summary>
 	/// 중단 마무리 스레드
 	/// </summary>
 	void stopThread();
