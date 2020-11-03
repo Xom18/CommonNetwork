@@ -37,8 +37,8 @@ public:
 		m_pRecvThread = nullptr;	//수신 스레드
 		m_pSendThread = nullptr;	//송신 스레드
 		m_pStoppingThread = nullptr;//중단 스레드
+		m_lpMasterStatus = nullptr;	//서버 상태
 
-		m_lpMasterStatus = nullptr;
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
 		m_Sock = INVALID_SOCKET;
 		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));

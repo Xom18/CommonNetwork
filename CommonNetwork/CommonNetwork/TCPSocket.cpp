@@ -87,8 +87,8 @@ void cTCPSocket::sendThread()//송신 스레드
 		}
 		
 		if(send(m_Sock, pSendBuffer, iDataSize, 0) == SOCKET_ERROR)
-		{//송신실패하면 에러
-			mLOG("sendThread %lld - %d", m_Sock, m_iPort);
+		{//송신실패하면 연결 끊긴걸로 보고 정지 시작
+			stop();
 			continue;
 		}
 	}
