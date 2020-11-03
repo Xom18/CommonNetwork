@@ -22,12 +22,9 @@ void cTCPSocket::recvThread()
 		if(m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN)
 			break;
 
-		sockaddr_in Client;
-		ZeroMemory(pRecvBuffer, _MAX_PACKET_SIZE);	//초기화
-		ZeroMemory(&Client, sizeof(Client));
-
 		//데이터 수신
-		int iDataLength = recvfrom((int)m_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0, (sockaddr*)&Client, &ClientAddrLength);
+		int iDataLength = recv(m_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0);
+
 		if(iDataLength == SOCKET_ERROR)
 			continue;
 
