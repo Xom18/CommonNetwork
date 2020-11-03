@@ -1,4 +1,4 @@
-#include <queue>
+#include <deque>
 #include <mutex>
 #include <WS2tcpip.h>
 #include <map>
@@ -37,7 +37,7 @@ void cTCPSocketServer::connectThread()
 		//연결대기에 추가
 		{
 			mAMTX(m_mtxConnectionMutex);
-			m_qConnectWait.push(pNewSocket);
+			m_qConnectWait.push_back(pNewSocket);
 		}
 	}
 
@@ -57,7 +57,7 @@ void cTCPSocketServer::operateThread()
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
 		//삭제 처리용
-		std::queue<SOCKET> qRemoveInMap;
+		std::deque<SOCKET> qRemoveInMap;
 
 		//연결 대기중인거 처리
 		operateConnectWait();
@@ -110,7 +110,7 @@ void cTCPSocketServer::operateThread()
 				if(lpTCPSocket->getSocketStatus() != eTHREAD_STATUS_RUN)
 				{
 					listDeleteWait.push_back(lpTCPSocket);
-					qRemoveInMap.push(iter->first);
+					qRemoveInMap.push_back(iter->first);
 					continue;
 				}
 
@@ -144,7 +144,7 @@ void cTCPSocketServer::operateThread()
 			while(!qRemoveInMap.empty())
 			{
 				SOCKET Sock = qRemoveInMap.front();
-				qRemoveInMap.pop();
+				qRemoveInMap.pop_front();
 
 				m_mapTCPSocket.erase(Sock);
 			}

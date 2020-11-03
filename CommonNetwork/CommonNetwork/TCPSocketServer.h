@@ -41,7 +41,7 @@ private:
 
 	std::map<SOCKET, cTCPSocket*> m_mapTCPSocket;	//연결되있는 TCP 소켓들, 특정 대상 패킷처리 원활하게 인덱스로 잡혀있음
 	//연결 대기 큐
-	std::queue<cTCPSocket*> m_qConnectWait;	//연결 대기 큐
+	std::deque<cTCPSocket*> m_qConnectWait;	//연결 대기 큐
 
 public:
 	cTCPSocketServer()//생성자
@@ -76,7 +76,7 @@ private:
 		//연결 대기중인거 다 밀어넣기
 		if(!m_qConnectWait.empty())
 		{
-			std::queue<cTCPSocket*> qConnectWait;
+			std::deque<cTCPSocket*> qConnectWait;
 			{
 				mAMTX(m_mtxConnectionMutex);
 				std::swap(m_qConnectWait, qConnectWait);
@@ -86,7 +86,7 @@ private:
 			while(!qConnectWait.empty())
 			{
 				cTCPSocket* lpSocket = qConnectWait.front();
-				qConnectWait.pop();
+				qConnectWait.pop_front();
 				m_mapTCPSocket.insert(std::pair<SOCKET, cTCPSocket*>(lpSocket->getSocket(), lpSocket));
 			}
 		}
