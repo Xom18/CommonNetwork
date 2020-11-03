@@ -32,6 +32,9 @@ public:
 	}
 };
 
+/// <summary>
+/// TCP용 패킷
+/// </summary>
 class cPacketTCP
 {
 public:

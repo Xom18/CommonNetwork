@@ -56,7 +56,7 @@ void TCPTest()
 
 	TCPServer.begin();
 
-	cTCPSocket aTCPClient[iDummyCount];	//클라
+	cTCPSocket* aTCPClient = new cTCPSocket[iDummyCount];	//클라
 
 	for(int i = 0; i < iDummyCount; ++i)
 	{
@@ -132,6 +132,7 @@ void TCPTest()
 			}
 		}
 	}
+	pKILL(aTCPClient);
 }
 
 void UDPTest()

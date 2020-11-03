@@ -1,21 +1,23 @@
 #pragma once
-//TDP 통신 서버 처리 하는곳
-//TDP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
+//TCP 통신 서버 처리 하는곳
+//TCP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
 
-//사용법
-//cUDPSocket 변수 선언
-//beginThread 호출
-//copyRecvQueue나 popRecvQueue를 통해서 패킷 꺼내가지고 처리한 뒤
-//처리한 패킷 반드시 delete처리 필요, 수신받은 패킷은 다 동적할당 되있는거다
+//시작
+//begin->connectThread(스레드), operateThread(스레드)
 
-//주의사항
-//UDP는 패킷이 유실되도 모르기때문에 중요한 정보 주고받을때 쓰면 안됨
+//연결
+//connectThread(스레드)->cTCPSocket 동적할당->setSocket->begin->
 
-//연결 처리하는곳
-//송신큐와 송신 대기큐를 둠으로써 송신스레드에서는 송신할 때 매번 뮤텍스 호출을 안하고 패킷 빌때만 뮤텍스로 송신대기큐에서 당겨올때만 하면 된다
-//송신큐만 대기큐가 있는이유는 수신은 copyRecvQueue로 외부 큐에서 가져가고 있기 때문에 
-//pushSend호출->송신대기큐(m_qSendWaitQueue)->송신큐(m_qSendQueue)->송신
-//수신큐(m_qRecvQueue)->copyRecvQueue호출->사용하는 프로그램에 맞게 꺼내쓰기, 반드시 꺼내쓰고 변수제거
+//송신
+//sendAll->연결되있는 TCPSocket들에 pushSend->sendThread(스레드)->
+//sendTarget->특정 대상 TCPSocket에 pushSend->sendThread(스레드)->
+
+//수신
+//recvThread(스레드)->swapRecvQueue 또는 copyRecvQueue
+
+//연결종료
+//stop
+
 class cTCPSocketServer
 {
 private:

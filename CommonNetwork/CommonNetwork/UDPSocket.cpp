@@ -46,7 +46,7 @@ void cUDPSocket::recvThread()
 
 	pKILL(pRecvBuffer);
 
-	mLOG("End recvThread");
+	mLOG("End recvThread %d", m_iPort);
 }
 
 void cUDPSocket::sendThread()//송신 스레드
@@ -88,22 +88,24 @@ void cUDPSocket::sendThread()//송신 스레드
 
 		if (sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
 		{//송신실패하면 에러
-			printf("송신 에러\n");
+			mLOG("Send Error %d", m_iPort);
 			continue;
 		}
 	}
 
 	pKILL(pSendBuffer);
-	mLOG("End recvThread");
+	mLOG("End recvThread %d", m_iPort);
 }
 
 //스레드 시작
 void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 {
+	mLOG("Begin [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
+
 	if (m_pSendThread != nullptr
 	|| m_pRecvThread != nullptr)
 	{
-		printf("이미 구동중인 스레드가 있다\n");
+		mLOG("Begin error [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP , _iPort);
 		return;
 	}
 
@@ -112,7 +114,7 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
 	if (iWSOK != 0)
 	{
-		printf("소켓 시작 에러\n");
+		mLOG("Socket start error [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
 		ExitProcess(EXIT_FAILURE);
 	}
 
@@ -129,7 +131,7 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	//수신 타임아웃 설정
 	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
 	{
-		printf("UDP 옵션 설정 실패\n");
+		mLOG("Timeout setting fail [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
 		return;
 	}
 
@@ -139,8 +141,8 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 		//바인딩, 만약 동일한 포트로 이미 열려있으면 에러남
 		if (bind(m_Sock, (sockaddr*)&m_SockInfo, sizeof(sockaddr_in)) != 0)
 		{
-			printf("바인딩 에러[%d]\n", WSAGetLastError());
-			ExitProcess(EXIT_FAILURE);
+			mLOG("Bind error [%s]%s : %d [%d]", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort, WSAGetLastError());
+			return;
 		}
 	}
 
@@ -154,9 +156,13 @@ void cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 void cUDPSocket::stop()
 {
 	//스레드가 멈춰있으면 의미없으니 return
-	if (m_iStatus == eTHREAD_STATUS_IDLE
+	if(m_iStatus == eTHREAD_STATUS_IDLE
 	|| m_iStatus == eTHREAD_STATUS_STOP)
+	{
 		return;
+	}
+
+	mLOG("Begin stop %d", m_iPort);
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;
@@ -172,6 +178,8 @@ void cUDPSocket::stop()
 
 void cUDPSocket::stoppingThread()
 {
+	mLOG("Begin stop thread %d", m_iPort);
+
 	//스레드 정지 대기
 	m_pSendThread->join();
 	m_pRecvThread->join();
@@ -197,4 +205,6 @@ void cUDPSocket::stoppingThread()
 
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
+
+	mLOG("Success stop thread %d", m_iPort);
 }

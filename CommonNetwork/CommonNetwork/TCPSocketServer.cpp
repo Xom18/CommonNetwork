@@ -13,10 +13,8 @@
 
 void cTCPSocketServer::connectThread()
 {
-	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
+	mLOG("Begin connectThread %d", m_iPort);
 	int ClientAddrLength = sizeof(sockaddr_in);
-
-	printf("Begin ConnectThread %d\n", m_iPort);
 
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
@@ -29,13 +27,12 @@ void cTCPSocketServer::connectThread()
 
 		cTCPSocket* pNewSocket = new cTCPSocket();
 		pNewSocket->setSocket(Socket, &Client, ClientAddrLength, &m_iStatus);
-		pNewSocket->beginThread();
+		pNewSocket->begin();
 
 		//연결된거 IP보려고 넣어둔거, 주석
-		char clientIP[256];
-		ZeroMemory(clientIP, sizeof(clientIP));
-		inet_ntop(AF_INET, &Client.sin_addr, clientIP, sizeof(clientIP));
-		printf("Connect success [%s]\n", clientIP);
+		//char clientIP[256];
+		//ZeroMemory(clientIP, sizeof(clientIP));
+		//inet_ntop(AF_INET, &Client.sin_addr, clientIP, sizeof(clientIP));
 
 		//연결대기에 추가
 		{
@@ -44,16 +41,14 @@ void cTCPSocketServer::connectThread()
 		}
 	}
 
-	pKILL(pRecvBuffer);
-
-	printf("End recvThread\n");
+	mLOG("End connectThread %d", m_iPort);
 }
 
 // 처리 스레드
 // 패킷 가져오고 전역패킷 보내고 처리
 void cTCPSocketServer::operateThread()
 {
-	printf("Begin SendThread %d\n", m_iPort);
+	mLOG("Begin operateThread %d\n", m_iPort);
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 
@@ -176,7 +171,7 @@ void cTCPSocketServer::operateThread()
 	}
 
 	pKILL(pSendBuffer);
-	printf("End sendThread\n");
+	mLOG("End operateThread\n");
 }
 
 //스레드 시작
@@ -185,7 +180,7 @@ void cTCPSocketServer::begin(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 	if(m_pConnectThread != nullptr
 	|| m_pOperateThread != nullptr)
 	{
-		printf("이미 구동중인 스레드가 있다\n");
+		mLOG("Begin error %d", _iPort);
 		return;
 	}
 
@@ -194,7 +189,7 @@ void cTCPSocketServer::begin(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
 	if(iWSOK != 0)
 	{
-		printf("소켓 시작 에러\n");
+		mLOG("Socket start error %d", _iPort);
 		ExitProcess(EXIT_FAILURE);
 	}
 
@@ -209,26 +204,26 @@ void cTCPSocketServer::begin(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 	bool bUseNoDelay = _bUseNoDelay;
 	if(setsockopt(m_Sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&bUseNoDelay, sizeof(bUseNoDelay)) != 0)
 	{
-		printf("TCP 옵션 설정 실패\n");
+		mLOG("Nodelay setting fail %d", _iPort);
 		return;
 	}
 
 	//수신 타임아웃 설정
 	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
 	{
-		printf("TCP 옵션 설정 실패\n");
+		mLOG("Timeout setting fail %d", _iPort);
 		return;
 	}
 
 	if(bind(m_Sock, (sockaddr*)&m_SockInfo, sizeof(sockaddr_in)) != 0)
 	{
-		printf("바인딩 에러[%d]\n", WSAGetLastError());
+		mLOG("Bind error %d [%d]", _iPort, WSAGetLastError());
 		ExitProcess(EXIT_FAILURE);
 	}
 
 	if(listen(m_Sock, SOMAXCONN) != 0)
 	{
-		printf("리슨 에러\n");
+		mLOG("listen error %d", _iPort);
 		return;
 	}
 
@@ -245,6 +240,8 @@ void cTCPSocketServer::stop()
 	if(m_iStatus == eTHREAD_STATUS_IDLE
 	|| m_iStatus == eTHREAD_STATUS_STOP)
 		return;
+
+	mLOG("Begin stop %d", m_iPort);
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;
@@ -317,4 +314,6 @@ void cTCPSocketServer::stop()
 
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
+
+	mLOG("Success stop %d", m_iPort);
 }

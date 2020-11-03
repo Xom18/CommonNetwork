@@ -11,6 +11,8 @@
 
 void cTCPSocket::recvThread()
 {
+	mLOG("Begin recvThread %d", m_iPort);
+
 	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
 	int ClientAddrLength = sizeof(sockaddr_in);
 
@@ -39,12 +41,12 @@ void cTCPSocket::recvThread()
 
 	pKILL(pRecvBuffer);
 
-	printf("End recvThread\n");
+	mLOG("End recvThread %d", m_iPort);
 }
 
 void cTCPSocket::sendThread()//송신 스레드
 {
-	printf("Begin sendThread\n");
+	mLOG("Begin sendThread %d", m_iPort);
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 	while(m_iStatus == eTHREAD_STATUS_RUN)
@@ -86,13 +88,13 @@ void cTCPSocket::sendThread()//송신 스레드
 		
 		if(send(m_Sock, pSendBuffer, iDataSize, 0) == SOCKET_ERROR)
 		{//송신실패하면 에러
-			printf("송신 에러\n");
+			mLOG("sendThread %lld - %d", m_Sock, m_iPort);
 			continue;
 		}
 	}
 
 	pKILL(pSendBuffer);
-	printf("End sendThread\n");
+	mLOG("End sendThread %d", m_iPort);
 }
 
 //스레드 시작
@@ -101,7 +103,7 @@ bool cTCPSocket::tryConnectServer(char* _csIP, int _iPort, int _iTimeOut, bool _
 	if(m_pRecvThread != nullptr
 	|| m_pSendThread != nullptr)
 	{
-		printf("이미 구동중인 스레드가 있다\n");
+		mLOG("Begin error %d", _iPort);
 		return false;
 	}
 
@@ -110,11 +112,11 @@ bool cTCPSocket::tryConnectServer(char* _csIP, int _iPort, int _iTimeOut, bool _
 	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
 	if(iWSOK != 0)
 	{
-		printf("소켓 시작 에러\n");
+		mLOG("Socket start error %d", _iPort);
 		ExitProcess(EXIT_FAILURE);
 	}
 
-//	m_iPort = _iPort;									//포트
+	m_iPort = _iPort;									//포트
 	m_Sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);	//소켓 생성
 	inet_pton(AF_INET, _csIP, &m_SockInfo.sin_addr);	//특정 IP만 대상
 
@@ -125,38 +127,48 @@ bool cTCPSocket::tryConnectServer(char* _csIP, int _iPort, int _iTimeOut, bool _
 	bool bUseNoDelay = _bUseNoDelay;
 	if(setsockopt(m_Sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&bUseNoDelay, sizeof(bUseNoDelay)) != 0)
 	{
-		printf("TCP 옵션 설정 실패\n");
+		mLOG("Nodelay setting fail %d", _iPort);
 		return false;
 	}
 
 	//수신 타임아웃 설정
 	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
 	{
-		printf("TCP 옵션 설정 실패\n");
+		mLOG("Timeout setting fail %d", _iPort);
 		return false;
 	}
 
-	//연결 시도
-	int iErrorCode = connect(m_Sock, (sockaddr*)&m_SockInfo, sizeof(m_SockInfo));
-	if(iErrorCode != 0)
+	//연결 스레드
+	if(m_pConnectThread != nullptr)
 	{
-		printf("TCP 연결 실패(%d) [%s : %d]\n", iErrorCode, _csIP, _iPort);
-		return false;
+		m_pConnectThread->join();
+		KILL(m_pConnectThread);
 	}
 
-	//연결 성공했으면 스레드 시작
-	printf("TCP Connect [%s : %d]\n", _csIP, _iPort);
+	//연결 스레드 시작
+	m_pConnectThread = new std::thread([&]() {connectThread(); });
 
-	beginThread();
 	return true;
 }
 
 //스레드 시작
-void cTCPSocket::beginThread()
+void cTCPSocket::connectThread()
 {
-	if(m_Sock == 0)
+	//연결 시도
+	int iErrorCode = connect(m_Sock, (sockaddr*)&m_SockInfo, sizeof(m_SockInfo));
+	if(iErrorCode != 0)
+	{
+		mLOG("Connect error %lld", m_Sock);
 		return;
+	}
+	mLOG("Connect success %lld", m_Sock);
 
+	//연결 성공했으니 스레드 시작
+	begin();
+}
+
+void cTCPSocket::begin()
+{
 	//상태 변경하고 스레드 시작
 	m_iStatus = eTHREAD_STATUS_RUN;
 	m_pRecvThread = new std::thread([&]() {recvThread(); });
@@ -179,15 +191,25 @@ void cTCPSocket::stop()
 
 	//중단처리 스레드
 	if(m_pStoppingThread != nullptr)
+	{
+		m_pStoppingThread->join();
 		KILL(m_pStoppingThread);
-	m_pStoppingThread = new std::thread([&]() {stoppingThread(); });
+	}
+	m_pStoppingThread = new std::thread([&]() {stopThread(); });
 }
 
-void cTCPSocket::stoppingThread()
+void cTCPSocket::stopThread()
 {
 	//스레드 처리
 	m_pSendThread->join();
 	m_pRecvThread->join();
+
+	//연결 스레드 처리
+	if(m_pConnectThread != nullptr)
+	{
+		m_pConnectThread->join();
+		KILL(m_pConnectThread);
+	}
 
 	//변수 해제
 	KILL(m_pSendThread);

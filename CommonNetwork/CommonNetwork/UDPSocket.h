@@ -2,17 +2,18 @@
 //UDP 통신처리 하는곳
 //UDP는 서버와 클라이언트가 크게 다르지 않아서 그냥 한파일에 처리했음
 
-//사용법
-//cUDPSocket 변수 선언
-//beginThread 호출
-//copyRecvQueue나 popRecvQueue를 통해서 패킷 꺼내가지고 처리한 뒤
-//처리한 패킷 반드시 delete처리 필요, 수신받은 패킷은 다 동적할당 되있는거다
+//연결
+//begin->recvThread(스레드), sendThread(스레드)
 
-//패킷 처리하는곳
-//송신큐와 송신 대기큐를 둠으로써 송신스레드에서는 송신할 때 매번 뮤텍스 호출을 안하고 패킷 빌때만 뮤텍스로 송신대기큐에서 당겨올때만 하면 된다
-//송신큐만 대기큐가 있는이유는 수신은 copyRecvQueue로 외부 큐에서 가져가고 있기 때문에 
-//pushSend호출->송신대기큐(m_qSendWaitQueue)->송신큐(m_qSendQueue)->송신
-//수신큐(m_qRecvQueue)->copyRecvQueue호출->사용하는 프로그램에 맞게 꺼내쓰기, 반드시 꺼내쓰고 변수제거
+//송신
+//pushSend->sendThread(스레드)
+
+//수신
+//recvThread(스레드)->swapRecvQueue 또는 copyRecvQueue
+
+//연결종료
+//stop
+
 class cUDPSocket
 {
 private:

@@ -1,8 +1,9 @@
 ※※※※모든 패킷은 다 동적할당 되어있으므로 패킷을 꺼내와서 처리 한 뒤 반드시 동적할당 해제 필요※※※※
 
-UDP 통신
+UDP 통신 - 클라이언트, 서버
 
-★클라이언트, 서버 모두 cUDPSocket 사용
+cUDPSocket 사용
+
 1. void begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 사용하여 스레드 시작
 - _bIsServer: true를 입력하게 되면 서버 false를 입력하게 되면 클라이언트
@@ -29,9 +30,11 @@ _lpQueue와 갖고있는 패킷 큐를 swap
 
 
 ===========================================================================================
-TCP 통신
 
-★클라이언트 cTCPSocket 사용
+
+TCP 통신 - 클라이언트
+
+cTCPSocket 사용
 1. bool tryConnectServer(char* _csIP, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
 사용하여 스레드 시작
 - _csIP		: 서버 IP
@@ -55,7 +58,14 @@ _lpQueue에 내용물 복제하는거
 - _lpQueue	: 패킷 받아올 큐
 _lpQueue와 갖고있는 패킷 큐를 swap
 
-★서버 cTCPSocketServer 사용
+
+===========================================================================================
+
+
+TCP 통신 - 서버
+
+cTCPSocketServer 사용
+
 1. void begin(int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
 사용하여 스레드 시작
 - _iPort	: 통신에 사용할 포트, 기본 58326
