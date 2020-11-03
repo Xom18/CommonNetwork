@@ -3,7 +3,7 @@
 //TCP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
 
 //연결
-//tryConnect->connectThread(스레드)->begin->recvThread(스레드), sendThread(스레드, 여기서 connectThread 해제)
+//tryConnect->begin->recvThread(스레드), sendThread(스레드, 여기서 connectThread 해제)
 
 //송신
 //pushSend->sendThread(스레드)
@@ -29,7 +29,6 @@ private:
 	std::deque<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 	std::thread* m_pRecvThread;					//수신 스레드
 	std::thread* m_pSendThread;					//송신 스레드
-	std::thread* m_pConnectThread;				//연결 스레드
 	std::thread* m_pStoppingThread;				//중단 스레드
 
 public:
@@ -38,7 +37,6 @@ public:
 		m_pRecvThread = nullptr;	//수신 스레드
 		m_pSendThread = nullptr;	//송신 스레드
 		m_pStoppingThread = nullptr;//중단 스레드
-		m_pConnectThread = nullptr;	//연결 스레드
 
 		m_lpMasterStatus = nullptr;
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
@@ -51,8 +49,6 @@ public:
 		stop();
 		if(m_pStoppingThread != nullptr)
 			m_pStoppingThread->join();
-		if(m_pConnectThread != nullptr)
-			m_pConnectThread->join();
 
 		KILL(m_pStoppingThread);
 	}

@@ -138,33 +138,18 @@ bool cTCPSocket::tryConnectServer(char* _csIP, int _iPort, int _iTimeOut, bool _
 		return false;
 	}
 
-	//연결 스레드
-	if(m_pConnectThread != nullptr)
-	{
-		m_pConnectThread->join();
-		KILL(m_pConnectThread);
-	}
-
-	//연결 스레드 시작
-	m_pConnectThread = new std::thread([&]() {connectThread(); });
-
-	return true;
-}
-
-//스레드 시작
-void cTCPSocket::connectThread()
-{
 	//연결 시도
 	int iErrorCode = connect(m_Sock, (sockaddr*)&m_SockInfo, sizeof(m_SockInfo));
 	if(iErrorCode != 0)
 	{
 		mLOG("Connect error %lld", m_Sock);
-		return;
+		return false;
 	}
 	mLOG("Connect success %lld", m_Sock);
 
 	//연결 성공했으니 스레드 시작
 	begin();
+	return true;
 }
 
 void cTCPSocket::begin()
@@ -203,13 +188,6 @@ void cTCPSocket::stopThread()
 	//스레드 처리
 	m_pSendThread->join();
 	m_pRecvThread->join();
-
-	//연결 스레드 처리
-	if(m_pConnectThread != nullptr)
-	{
-		m_pConnectThread->join();
-		KILL(m_pConnectThread);
-	}
 
 	//변수 해제
 	KILL(m_pSendThread);
