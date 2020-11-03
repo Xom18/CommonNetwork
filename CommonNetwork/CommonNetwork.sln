@@ -6,8 +6,14 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CommonNetwork", "CommonNetwork\CommonNetwork.vcxproj", "{421A8B7D-7B12-4F80-A93F-775F344DAFE6}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TCPClientExample", "TCPClientExample\TCPClientExample.vcxproj", "{197BE112-F526-4371-91C5-BF7B9CC37324}"
+	ProjectSection(ProjectDependencies) = postProject
+		{421A8B7D-7B12-4F80-A93F-775F344DAFE6} = {421A8B7D-7B12-4F80-A93F-775F344DAFE6}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TCPServerExample", "TCPServerExample\TCPServerExample.vcxproj", "{240E73C3-0743-4050-8AF2-55CBE44BB4A6}"
+	ProjectSection(ProjectDependencies) = postProject
+		{421A8B7D-7B12-4F80-A93F-775F344DAFE6} = {421A8B7D-7B12-4F80-A93F-775F344DAFE6}
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution", "Solution", "{923D0476-8B8B-48B5-B82F-09558619908E}"
 	ProjectSection(SolutionItems) = preProject
@@ -15,8 +21,14 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution", "Solution", "{92
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UDPClientExample", "UDPClientExample\UDPClientExample.vcxproj", "{DD618503-6A63-4CF6-B8A5-F8A26D692310}"
+	ProjectSection(ProjectDependencies) = postProject
+		{421A8B7D-7B12-4F80-A93F-775F344DAFE6} = {421A8B7D-7B12-4F80-A93F-775F344DAFE6}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UDPServerExample", "UDPServerExample\UDPServerExample.vcxproj", "{F1187815-0CF1-431C-987A-623C08567AFD}"
+	ProjectSection(ProjectDependencies) = postProject
+		{421A8B7D-7B12-4F80-A93F-775F344DAFE6} = {421A8B7D-7B12-4F80-A93F-775F344DAFE6}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
