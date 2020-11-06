@@ -25,7 +25,7 @@ int main()
 	std::cin >> strIP;
 
 	g_TCPClient.tryConnectServer((char*)strIP.c_str());
-	std::thread m_RecvThread = std::thread([&]() {recvThread(); });
+	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)
 	{
@@ -41,6 +41,8 @@ int main()
 
 		g_TCPClient.pushSend((int)strText.length() + 1, (char*)strText.c_str());
 	}
+
+	RecvThread.join();
 }
 
 void recvThread()
@@ -60,5 +62,6 @@ void recvThread()
 			//반드시 처리한 뒤 패킷 delete
 			delete lpPacket;
 		}
+		Sleep(15);
 	}
 }

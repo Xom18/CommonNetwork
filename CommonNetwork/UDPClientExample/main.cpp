@@ -25,7 +25,7 @@ int main()
 	std::cin >> strIP;
 
 	g_UDPClient.begin(false, (char*)strIP.c_str());
-	std::thread m_RecvThread = std::thread([&]() {recvThread(); });
+	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)
 	{
@@ -41,6 +41,7 @@ int main()
 
 		g_UDPClient.pushSend((int)strText.length() + 1, (char*)strText.c_str(), g_UDPClient.getSockinfo());
 	}
+	RecvThread.join();
 }
 
 void recvThread()

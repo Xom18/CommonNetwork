@@ -22,7 +22,7 @@ void recvThread();
 int main()
 {
 	g_UDPServer.begin(true);
-	std::thread m_RecvThread = std::thread([&]() {recvThread(); });
+	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)
 	{
@@ -36,6 +36,7 @@ int main()
 			break;
 		}
 	}
+	RecvThread.join();
 }
 
 void recvThread()

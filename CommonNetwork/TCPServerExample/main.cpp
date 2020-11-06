@@ -22,7 +22,7 @@ void recvThread();
 int main()
 {
 	g_TCPServer.begin();
-	std::thread m_RecvThread = std::thread([&]() {recvThread(); });
+	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)
 	{
@@ -36,6 +36,7 @@ int main()
 			break;
 		}
 	}
+	RecvThread.join();
 }
 
 void recvThread()
@@ -56,5 +57,7 @@ void recvThread()
 			//반드시 처리한 뒤 패킷 delete
 			delete lpPacket;
 		}
+
+		Sleep(15);
 	}
 }
