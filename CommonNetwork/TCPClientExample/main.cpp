@@ -18,14 +18,14 @@
 #pragma comment(lib, "ws2_32.lib")
 
 cTCPSocket g_TCPClient;	//클라
-void recvThread();
+void recvThread(cTCPSocket* _lpClient);
 int main()
 {
 	std::string strIP;
 	std::cin >> strIP;
 
 	g_TCPClient.tryConnectServer((char*)strIP.c_str());
-	std::thread RecvThread = std::thread([&]() {recvThread(); });
+	std::thread RecvThread = std::thread([&]() {recvThread(&g_TCPClient); });
 
 	while(true)
 	{
@@ -39,18 +39,23 @@ int main()
 			break;
 		}
 
-		g_TCPClient.pushSend((int)strText.length() + 1, (char*)strText.c_str());
+		for(int i = 0; i < 100; ++i)
+		{
+			std::chrono::milliseconds msSleepTime(50);
+			std::this_thread::sleep_for(msSleepTime);
+			g_TCPClient.pushSend((int)strText.length() + 1, (char*)strText.c_str());
+		}
 	}
 
 	RecvThread.join();
 }
 
-void recvThread()
+void recvThread(cTCPSocket* _lpClient)
 {
 	std::deque<cPacketTCP*> qRecvQueue;
-	while(g_TCPClient.getSocketStatus() == eTHREAD_STATUS_RUN)
+	while(_lpClient->getSocketStatus() == eTHREAD_STATUS_RUN)
 	{
-		g_TCPClient.swapRecvQueue(&qRecvQueue);
+		_lpClient->swapRecvQueue(&qRecvQueue);
 
 		while(!qRecvQueue.empty())
 		{

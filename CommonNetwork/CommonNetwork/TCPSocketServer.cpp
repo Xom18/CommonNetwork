@@ -189,13 +189,13 @@ void cTCPSocketServer::operateThread()
 }
 
 //스레드 시작
-void cTCPSocketServer::begin(int _iPort, int _iTick, int _iTimeOut, bool _bUseNoDelay)
+bool cTCPSocketServer::begin(int _iPort, int _iTick, int _iTimeOut, bool _bUseNoDelay)
 {
 	if(m_pConnectThread != nullptr
 	|| m_pOperateThread != nullptr)
 	{
 		mLOG("Begin error %d", _iPort);
-		return;
+		return false;
 	}
 
 	WSADATA wsaData;							//윈속 데이터
@@ -204,11 +204,18 @@ void cTCPSocketServer::begin(int _iPort, int _iTick, int _iTimeOut, bool _bUseNo
 	if(iWSOK != 0)
 	{
 		mLOG("Socket start error %d", _iPort);
-		ExitProcess(EXIT_FAILURE);
+		return false;
 	}
 
 	m_iPort = _iPort;									//포트
 	m_Sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);	//소켓 생성
+
+	if(m_Sock == INVALID_SOCKET)
+	{
+		mLOG("Socket error %d", _iPort);
+		return false;
+	}
+
 	m_SockInfo.sin_addr.S_un.S_addr = ADDR_ANY;		//전체 대상
 
 	m_SockInfo.sin_family = AF_INET;					//TCP 사용
@@ -221,32 +228,34 @@ void cTCPSocketServer::begin(int _iPort, int _iTick, int _iTimeOut, bool _bUseNo
 	if(setsockopt(m_Sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&bUseNoDelay, sizeof(bUseNoDelay)) != 0)
 	{
 		mLOG("Nodelay setting fail %d", _iPort);
-		return;
+		return false;
 	}
 
 	//수신 타임아웃 설정
 	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
 	{
 		mLOG("Timeout setting fail %d", _iPort);
-		return;
+		return false;
 	}
 
 	if(bind(m_Sock, (sockaddr*)&m_SockInfo, sizeof(sockaddr_in)) != 0)
 	{
 		mLOG("Bind error %d [%d]", _iPort, WSAGetLastError());
-		ExitProcess(EXIT_FAILURE);
+		return false;
 	}
 
 	if(listen(m_Sock, SOMAXCONN) != 0)
 	{
 		mLOG("listen error %d", _iPort);
-		return;
+		return false;
 	}
 
 	//상태 변경하고 스레드 시작
 	m_iStatus = eTHREAD_STATUS_RUN;
 	m_pConnectThread = new std::thread([&]() {connectThread(); });
 	m_pOperateThread = new std::thread([&]() {operateThread(); });
+
+	return true;
 }
 
 //스레드 정지

@@ -121,6 +121,12 @@ bool cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	m_iPort = _iPort;									//포트
 	m_Sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);	//소켓 생성
 
+	if(m_Sock == INVALID_SOCKET)
+	{
+		mLOG("Socket error %d", _iPort);
+		return false;
+	}
+
 	if (_csIP == nullptr)
 		m_SockInfo.sin_addr.S_un.S_addr = ADDR_ANY;		//전체 대상
 	else

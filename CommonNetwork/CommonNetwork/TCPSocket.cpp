@@ -126,6 +126,13 @@ bool cTCPSocket::tryConnectServer(char* _csIP, int _iPort, int _iTimeOut, bool _
 
 	m_iPort = _iPort;									//포트
 	m_Sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);	//소켓 생성
+
+	if(m_Sock == INVALID_SOCKET)
+	{
+		mLOG("Socket error %d", _iPort);
+		return false;
+	}
+
 	inet_pton(AF_INET, _csIP, &m_SockInfo.sin_addr);	//특정 IP만 대상
 
 	m_SockInfo.sin_family = AF_INET;					//TCP 사용

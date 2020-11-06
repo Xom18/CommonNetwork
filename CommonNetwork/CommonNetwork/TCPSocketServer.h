@@ -101,7 +101,7 @@ public:
 	/// <param name="_iPort">포트(기본 58326)</param>
 	/// <param name="_iTimeOut">타임아웃 옵션</param>
 	/// <param name="_bUseNoDelay">노딜레이 옵션</param>
-	void begin(int _iPort = _DEFAULT_PORT, int _iTick = _DEFAULT_TICK, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
+	bool begin(int _iPort = _DEFAULT_PORT, int _iTick = _DEFAULT_TICK, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
 
 	/// <summary>
 	/// 스레드 정지
