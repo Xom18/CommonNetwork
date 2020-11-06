@@ -3,6 +3,7 @@
 #include <WS2tcpip.h>
 #include <map>
 #include <list>
+#include <condition_variable>
 #include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
@@ -51,6 +52,8 @@ void cTCPSocketServer::operateThread()
 	std::list<cTCPSocket*> listDeleteWait;
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
+		std::chrono::system_clock::time_point StartTime = std::chrono::system_clock::now();
+		
 		//삭제 처리용
 		std::deque<SOCKET> qRemoveInMap;
 
@@ -94,6 +97,7 @@ void cTCPSocketServer::operateThread()
 			bIsNotHaveSend = true;
 		}
 
+		std::deque<cPacketTCP*> qRecvQueue;
 		//패킷 송수신 처리
 		{
 			std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.begin();
@@ -109,10 +113,9 @@ void cTCPSocketServer::operateThread()
 					continue;
 				}
 
-				//패킷 수신 처리
+				//패킷 꺼내놓고
 				{
-					mAMTX(m_mtxRecvMutex);
-					lpTCPSocket->getRecvQueue(&m_qRecvQueue);
+					lpTCPSocket->getRecvQueue(&qRecvQueue);
 				}
 
 				//전역송신 패킷 있으면 그거 보내주기
@@ -122,6 +125,12 @@ void cTCPSocketServer::operateThread()
 					lpTCPSocket->pushSend(&qSendQueue);
 				}
 			}
+		}
+
+		//수신큐로 옮김
+		{
+			mAMTX(m_mtxRecvMutex);
+			m_qRecvQueue.insert(m_qRecvQueue.end(), qRecvQueue.begin(), qRecvQueue.end());
 		}
 
 		//송신한 전역 패킷 지우기
@@ -163,6 +172,16 @@ void cTCPSocketServer::operateThread()
 				++iter;
 			}
 		}
+
+		//설정된 틱만큼 재운다
+		std::chrono::duration<double> EndTime = std::chrono::system_clock::now() - StartTime;
+		std::chrono::milliseconds msEndTime = std::chrono::duration_cast<std::chrono::milliseconds>(EndTime);
+
+		if(m_iOperateTick < msEndTime.count())
+			continue;
+
+		std::chrono::milliseconds msSleepTime(m_iOperateTick - msEndTime.count());
+		std::this_thread::sleep_for(msSleepTime);
 	}
 
 	pKILL(pSendBuffer);
@@ -170,7 +189,7 @@ void cTCPSocketServer::operateThread()
 }
 
 //스레드 시작
-void cTCPSocketServer::begin(int _iPort, int _iTimeOut, bool _bUseNoDelay)
+void cTCPSocketServer::begin(int _iPort, int _iTick, int _iTimeOut, bool _bUseNoDelay)
 {
 	if(m_pConnectThread != nullptr
 	|| m_pOperateThread != nullptr)
@@ -194,6 +213,8 @@ void cTCPSocketServer::begin(int _iPort, int _iTimeOut, bool _bUseNoDelay)
 
 	m_SockInfo.sin_family = AF_INET;					//TCP 사용
 	m_SockInfo.sin_port = htons(m_iPort);				//포트
+	
+	m_iOperateTick = _iTick;
 
 	//노딜레이 옵션, 0아닌게 반환되면 뭐가 문제가 있다
 	bool bUseNoDelay = _bUseNoDelay;

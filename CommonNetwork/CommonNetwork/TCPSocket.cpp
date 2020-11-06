@@ -2,6 +2,7 @@
 #include <mutex>
 #include <WS2tcpip.h>
 #include <map>
+#include <condition_variable>
 #include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
@@ -52,14 +53,20 @@ void cTCPSocket::sendThread()//송신 스레드
 		if(m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN)
 			break;
 
-		//송신 큐가 비어있다
+		//송신 큐가 비어있다, 재워준다
 		if(m_qSendQueue.empty())
 		{
-			std::chrono::milliseconds TimeMS(10);
-			std::this_thread::sleep_for(TimeMS);
-			continue;
+			std::mutex mtxWaiter;
+			std::unique_lock<std::mutex> lkWaiter(mtxWaiter);
+			m_cvWaiter.wait(lkWaiter, [&] {
+				return !m_qSendQueue.empty() || m_iStatus != eTHREAD_STATUS_RUN || (m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN);
+			});
+			lkWaiter.unlock();
+
+			if(m_iStatus != eTHREAD_STATUS_RUN || (m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN))
+				break;
 		}
-		
+
 		//큐에 있는걸 가져온다
 		std::deque<cPacketTCP*>	qSendQueue;
 		{
@@ -67,26 +74,30 @@ void cTCPSocket::sendThread()//송신 스레드
 			std::swap(qSendQueue, m_qSendQueue);
 		}
 
-		ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
-		sockaddr_in AddrInfo;	//수신자 정보
-		int iDataSize = 0;		//데이터 크기
+		while(!qSendQueue.empty())
+		{
+			ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
+			int iSendSize = 0;		//데이터 크기
 
-		{//전송을 위해 패킷을 꺼냈다
+			//전송을 위해 패킷을 꺼냈다
 			cPacketTCP* pPacket = qSendQueue.front();
-			iDataSize = pPacket->m_iSize;
-			memcpy(&AddrInfo, &pPacket->m_Sock, sizeof(AddrInfo));
-			memcpy(pSendBuffer, pPacket->m_pData, iDataSize);
-			//누수없게 바로 해제
-			qSendQueue.pop_front();
 
-			//null일 일이 없으니 null체크 없이 바로
+			iSendSize = pPacket->m_iSize;
+			memcpy(pSendBuffer, pPacket->m_pData, iSendSize);
+			qSendQueue.pop_front();
 			delete pPacket;
-		}
-		
-		if(send(m_Sock, pSendBuffer, iDataSize, 0) == SOCKET_ERROR)
-		{//송신실패하면 연결 끊긴걸로 보고 정지 시작
-			stop();
-			continue;
+			
+			if(send(m_Sock, pSendBuffer, iSendSize, 0) == SOCKET_ERROR)
+			{
+				while(!qSendQueue.empty())
+				{//정지 전 누수없이 삭제
+					cPacketTCP* pTempPacket = qSendQueue.front();
+					qSendQueue.pop_front();
+					delete pTempPacket;
+				}
+				stop();
+				break;
+			}
 		}
 	}
 
@@ -170,6 +181,9 @@ void cTCPSocket::stop()
 
 	//소켓 닫음
 	closesocket(m_Sock);
+
+	//자고 있는 스레드들 깨워줌
+	m_cvWaiter.notify_all();
 
 	//중단처리 스레드
 	if(m_pStoppingThread != nullptr)

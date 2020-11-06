@@ -2,6 +2,7 @@
 #include <mutex>
 #include <WS2tcpip.h>
 #include <chrono>
+#include <condition_variable>
 #include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
@@ -47,12 +48,19 @@ void cUDPSocket::sendThread()//송신 스레드
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 	while (m_iStatus == eTHREAD_STATUS_RUN)
 	{
-		//비어있으면 10ms동안 대기
+		//비어있으면 대기
 		if (m_qSendQueue.empty())
 		{
-			std::chrono::milliseconds TimeMS(10);
-			std::this_thread::sleep_for(TimeMS);
-			continue;
+			std::mutex mtxWaiter;
+			std::unique_lock<std::mutex> lkWaiter(mtxWaiter);
+			m_cvWaiter.wait(lkWaiter, [&] {
+				return !m_qSendQueue.empty() || m_iStatus != eTHREAD_STATUS_RUN;
+			});
+			lkWaiter.unlock();
+
+			//종료하라고 왔었으면 종료
+			if(m_iStatus != eTHREAD_STATUS_RUN)
+				break;
 		}
 
 		//큐에 있는걸 가져온다
@@ -62,24 +70,26 @@ void cUDPSocket::sendThread()//송신 스레드
 			std::swap(qSendQueue, m_qSendQueue);
 		}
 
-		ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
-		sockaddr_in AddrInfo;	//수신자 정보
-		int iDataSize = 0;		//데이터 크기
+		while(!qSendQueue.empty())
+		{
+			ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
+			sockaddr_in AddrInfo;	//수신자 정보
+			int iDataSize = 0;		//데이터 크기
 
-		{//전송을 위해 패킷을 꺼냈다
-			cPacketUDP* lpPacket = qSendQueue.front();
-			iDataSize = lpPacket->m_iSize;
-			memcpy(&AddrInfo, &lpPacket->m_AddrInfo, sizeof(AddrInfo));
-			memcpy(pSendBuffer, lpPacket->m_pData, iDataSize);
-			//누수없게 바로 해제
-			qSendQueue.pop_front();
-			delete lpPacket;
-		}
+			{//전송을 위해 패킷을 꺼냈다
+				cPacketUDP* lpPacket = qSendQueue.front();
+				iDataSize = lpPacket->m_iSize;
+				memcpy(&AddrInfo, &lpPacket->m_AddrInfo, sizeof(AddrInfo));
+				memcpy(pSendBuffer, lpPacket->m_pData, iDataSize);
+				//누수없게 바로 해제
+				qSendQueue.pop_front();
+				delete lpPacket;
+			}
 
-		if (sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
-		{//송신실패하면 에러
-			mLOG("Send Error %d", m_iPort);
-			continue;
+			if(sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
+			{//송신실패하면 에러
+				mLOG("Send Error %d", m_iPort);
+			}
 		}
 	}
 
@@ -161,6 +171,9 @@ void cUDPSocket::stop()
 
 	//소켓 닫음
 	closesocket(m_Sock);
+
+	//자고 있는 스레드들 깨워줌
+	m_cvWaiter.notify_all();
 
 	//중단처리 스레드
 	if(m_pStoppingThread != nullptr)

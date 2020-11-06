@@ -5,6 +5,7 @@
 #include <mutex>
 #include <deque>
 #include <map>
+#include <condition_variable>
 #include "Debug.h"
 #include "Define.h"
 #include "Macro.h"

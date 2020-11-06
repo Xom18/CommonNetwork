@@ -36,6 +36,7 @@ private:
 
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
 	int		m_iPort;							//포트
+	int		m_iOperateTick;						//처리 간격
 	SOCKET	m_Sock;								//소켓
 	sockaddr_in m_SockInfo;						//소켓 정보
 
@@ -94,10 +95,13 @@ private:
 
 public:
 	/// <summary>
-	/// 소켓 시작
+	/// 서버 시작
 	/// </summary>
-	/// <param name="_iPort">포트번호(기본 58326)</param>
-	void begin(int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
+	/// <param name="_iTick">처리 틱 간격(ms)</param>
+	/// <param name="_iPort">포트(기본 58326)</param>
+	/// <param name="_iTimeOut">타임아웃 옵션</param>
+	/// <param name="_bUseNoDelay">노딜레이 옵션</param>
+	void begin(int _iPort = _DEFAULT_PORT, int _iTick = _DEFAULT_TICK, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
 
 	/// <summary>
 	/// 스레드 정지

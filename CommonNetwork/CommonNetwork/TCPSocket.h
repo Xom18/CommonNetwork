@@ -24,7 +24,7 @@ private:
 
 	std::mutex m_mtxSendMutex;					//송신 뮤텍스
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
-
+	std::condition_variable m_cvWaiter;			//대기용
 	std::deque<cPacketTCP*>	m_qSendQueue;		//송신 큐
 	std::deque<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 	std::thread* m_pRecvThread;					//수신 스레드
@@ -147,8 +147,11 @@ public:
 	{
 		cPacketTCP* pPacket = new cPacketTCP();
 		pPacket->setData(_iSize, _lpData);
-		mAMTX(m_mtxSendMutex);
-		m_qSendQueue.push_back(pPacket);
+		{
+			mAMTX(m_mtxSendMutex);
+			m_qSendQueue.push_back(pPacket);
+		}
+		m_cvWaiter.notify_all();
 	}
 
 	/// <summary>
@@ -157,8 +160,11 @@ public:
 	/// <param name="_pPacket">동적할당 되있는 패킷</param>
 	inline void pushSend(cPacketTCP* _pPacket)
 	{
-		mAMTX(m_mtxSendMutex);
-		m_qSendQueue.push_back(_pPacket);
+		{
+			mAMTX(m_mtxSendMutex);
+			m_qSendQueue.push_back(_pPacket);
+		}
+		m_cvWaiter.notify_all();
 	}
 
 	/// <summary>
@@ -167,16 +173,19 @@ public:
 	/// <param name="_pPacket">동적할당 되있는 패킷</param>
 	inline void pushSend(std::deque<cPacketTCP*>* _lpPacketQueue)
 	{
-		mAMTX(m_mtxSendMutex);
-		while(!_lpPacketQueue->empty())
 		{
-			//패킷을 그대로 복사해서 추가
-			cPacketTCP* pFrontPacket = _lpPacketQueue->front();
-			_lpPacketQueue->pop_front();
-			cPacketTCP* pPacket = new cPacketTCP();
-			pPacket->setData(pFrontPacket->m_iSize, pFrontPacket->m_pData, m_Sock);
-			m_qSendQueue.push_back(pPacket);
+			mAMTX(m_mtxSendMutex);
+			while(!_lpPacketQueue->empty())
+			{
+				//패킷을 그대로 복사해서 추가
+				cPacketTCP* pFrontPacket = _lpPacketQueue->front();
+				_lpPacketQueue->pop_front();
+				cPacketTCP* pPacket = new cPacketTCP();
+				pPacket->setData(pFrontPacket->m_iSize, pFrontPacket->m_pData, m_Sock);
+				m_qSendQueue.push_back(pPacket);
+			}
 		}
+		m_cvWaiter.notify_all();
 	}
 
 	/// <summary>

@@ -22,6 +22,7 @@ private:
 
 	std::deque<cPacketUDP*>	m_qSendQueue;		//송신 큐
 	std::deque<cPacketUDP*>	m_qRecvQueue;		//수신 큐
+	std::condition_variable	m_cvWaiter;			//대기용
 	std::thread* m_pSendThread;					//송신 스레드
 	std::thread* m_pRecvThread;					//수신 스레드
 	std::thread* m_pStoppingThread;				//중단 스레드
@@ -128,8 +129,11 @@ public:
 
 		cPacketUDP* pPacket = new cPacketUDP();
 		pPacket->setData(_iSize, _lpData, _lpAddrInfo);
-		mAMTX(m_mtxSendMutex);
-		m_qSendQueue.push_back(pPacket);
+		{
+			mAMTX(m_mtxSendMutex);
+			m_qSendQueue.push_back(pPacket);
+		}
+		m_cvWaiter.notify_all();
 	}
 
 	/// <summary>
