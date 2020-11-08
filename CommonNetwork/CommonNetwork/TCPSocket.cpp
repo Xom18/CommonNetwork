@@ -89,6 +89,7 @@ void cTCPSocket::sendThread()//송신 스레드
 			
 			if(send(m_Sock, pSendBuffer, iSendSize, 0) == SOCKET_ERROR)
 			{
+				//전송 실패하면 연결이 끊긴걸로 보고 정지한다
 				while(!qSendQueue.empty())
 				{//정지 전 누수없이 삭제
 					cPacketTCP* pTempPacket = qSendQueue.front();
