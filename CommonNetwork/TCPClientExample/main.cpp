@@ -38,13 +38,6 @@ int main()
 			g_TCPClient.stop();
 			break;
 		}
-
-		for(int i = 0; i < 100; ++i)
-		{
-			std::chrono::milliseconds msSleepTime(50);
-			std::this_thread::sleep_for(msSleepTime);
-			g_TCPClient.pushSend((int)strText.length() + 1, (char*)strText.c_str());
-		}
 	}
 
 	RecvThread.join();

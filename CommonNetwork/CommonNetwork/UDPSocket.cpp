@@ -10,21 +10,21 @@
 #include "Packet.h"
 #include "UDPSocket.h"
 
-void cUDPSocket::recvThread()
+void cUDPSocket::recvThread(SOCKET _Sock)
 {
-	mLOG("Begin recvThread %d", m_iPort);
+	mLOG("Begin recvThread %lld", _Sock);
 
 	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
-	int ClientAddrLength = sizeof(sockaddr_in);
+	int ClientAddrLength = sizeof(unSOCKADDR_IN);
 
 	while (m_iStatus == eTHREAD_STATUS_RUN)
 	{
-		sockaddr_in Client;
+		unSOCKADDR_IN Client;
 		ZeroMemory(pRecvBuffer, _MAX_PACKET_SIZE);	//초기화
 		ZeroMemory(&Client, sizeof(Client));
 
 		//데이터 수신
-		int iDataLength = recvfrom(m_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0, (sockaddr*)&Client, &ClientAddrLength);
+		int iDataLength = recvfrom(_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0, (sockaddr*)&Client, &ClientAddrLength);
 		if (iDataLength == SOCKET_ERROR)
 			continue;
 
@@ -38,12 +38,12 @@ void cUDPSocket::recvThread()
 
 	pKILL(pRecvBuffer);
 
-	mLOG("End recvThread %d", m_iPort);
+	mLOG("End recvThread %lld", _Sock);
 }
 
-void cUDPSocket::sendThread()//송신 스레드
+void cUDPSocket::sendThread(bool _bIsServer)//송신 스레드
 {
-	mLOG("Begin sendThread %d", m_iPort);
+	mLOG("Begin sendThread");
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 	while (m_iStatus == eTHREAD_STATUS_RUN)
@@ -73,7 +73,7 @@ void cUDPSocket::sendThread()//송신 스레드
 		while(!qSendQueue.empty())
 		{
 			ZeroMemory(pSendBuffer, _MAX_PACKET_SIZE);//데이터 초기화
-			sockaddr_in AddrInfo;	//수신자 정보
+			unSOCKADDR_IN AddrInfo;	//수신자 정보
 			int iDataSize = 0;		//데이터 크기
 
 			{//전송을 위해 패킷을 꺼냈다
@@ -86,26 +86,37 @@ void cUDPSocket::sendThread()//송신 스레드
 				delete lpPacket;
 			}
 
-			if(sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
-			{//송신실패하면 에러
-				mLOG("Send Error %d", m_iPort);
+			//대상에 맞춰서 맞는 소켓으로 전송
+			if(AddrInfo.IPv4.sin_family == AF_INET || !_bIsServer)
+			{
+				if(sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
+				{//송신실패하면 에러
+					mLOG("Send Error %lld [%d]", m_Sock, WSAGetLastError());
+				}
+			}
+			else if(AddrInfo.IPv4.sin_family == AF_INET6)
+			{
+				if(sendto(m_SockIPv6, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
+				{//송신실패하면 에러
+					mLOG("Send Error %lld [%d]", m_SockIPv6, WSAGetLastError());
+				}
 			}
 		}
 	}
 
 	pKILL(pSendBuffer);
-	mLOG("End recvThread %d", m_iPort);
+	mLOG("End recvThread");
 }
 
-//스레드 시작
-bool cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
+//클라이언트 시작
+bool cUDPSocket::beginClient(const char* _csIP, const char* _csPort, int _iMode, int _iTimeOut)
 {
-	mLOG("Begin [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
+	mLOG("Begin [Client]%s : %s", _csIP == nullptr ? "null" : _csIP, _csPort);
 
 	if (m_pSendThread != nullptr
 	|| m_pRecvThread != nullptr)
 	{
-		mLOG("Begin error [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP , _iPort);
+		mLOG("Begin error [Client]%s : %s", _csIP == nullptr ? "null" : _csIP , _csPort);
 		return false;
 	}
 
@@ -114,48 +125,129 @@ bool cUDPSocket::begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
 	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
 	if (iWSOK != 0)
 	{
-		mLOG("Socket start error [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
+		mLOG("WSAStartup error[Client] %s:%s[% d]", _csIP == nullptr ? "null" : _csIP, _csPort, WSAGetLastError());
 		return false;
 	}
 
-	m_iPort = _iPort;									//포트
-	m_Sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);	//소켓 생성
+	//소켓 정보 셋팅
+	int iFamily = AF_UNSPEC;
+	SOCKET* lpSock = &m_Sock;
+	unSOCKADDR_IN* lpSockInfo = &m_SockInfo;
 
-	if(m_Sock == INVALID_SOCKET)
+	addrinfo addrIn;
+	addrinfo* addrRes;
+
+	memset(&addrIn, 0, sizeof(addrIn));
+	addrIn.ai_family = iFamily;
+	addrIn.ai_socktype = SOCK_DGRAM;
+	addrIn.ai_flags = AI_PASSIVE;
+
+	getaddrinfo(_csIP, _csPort, &addrIn, &addrRes);
+	*lpSock = socket(addrRes->ai_family, addrRes->ai_socktype, addrRes->ai_protocol);
+	memcpy(lpSockInfo, addrRes->ai_addr, sizeof(unSOCKADDR_IN));
+
+	freeaddrinfo(addrRes);
+
+	if(*lpSock == INVALID_SOCKET)
 	{
-		mLOG("Socket error %d", _iPort);
+		mLOG("Socket error %s [%d]", _csPort, WSAGetLastError());
 		return false;
 	}
-
-	if (_csIP == nullptr)
-		m_SockInfo.sin_addr.S_un.S_addr = ADDR_ANY;		//전체 대상
-	else
-		inet_pton(AF_INET, _csIP, &m_SockInfo.sin_addr);//특정 IP만 대상
-	m_SockInfo.sin_family = AF_INET;					//UDP 사용
-	m_SockInfo.sin_port = htons(m_iPort);				//포트
 
 	//수신 타임아웃 설정
-	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
+	if(setsockopt(*lpSock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
 	{
-		mLOG("Timeout setting fail [%s]%s : %d", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort);
+		mLOG("Timeout setting fail %s [%d]", _csPort, WSAGetLastError());
 		return false;
 	}
 
-	//서버라면 바인딩 필요
-	if (_bIsServer)
+	
+	m_iStatus = eTHREAD_STATUS_RUN;
+
+	m_pRecvThread = new std::thread([&]() {recvThread(m_Sock); });
+	m_pSendThread = new std::thread([&]() {sendThread(false); });
+
+	return true;
+}
+
+//서버 시작
+bool cUDPSocket::beginServer(const char* _csPort, int _iMode, int _iTimeOut)
+{
+	mLOG("Begin [Server]%s", _csPort);
+
+	if(m_pSendThread != nullptr
+		|| m_pRecvThread != nullptr)
 	{
-		//바인딩, 만약 동일한 포트로 이미 열려있으면 에러남
-		if (bind(m_Sock, (sockaddr*)&m_SockInfo, sizeof(sockaddr_in)) != 0)
+		mLOG("Begin error[Server]%s", _csPort);
+		return false;
+	}
+
+	WSADATA wsaData;							//윈속 데이터
+	WORD wVersion = MAKEWORD(1, 0);				//버전
+	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
+	if(iWSOK != 0)
+	{
+		mLOG("WSAStartup error[Server]%s [%d]", _csPort, WSAGetLastError());
+		return false;
+	}
+
+	for(int i = 1; i < eWINSOCK_USE_BOTH; ++i)
+	{
+		if(!(_iMode & i))
+			continue;
+
+		int iFamily = AF_INET;
+		SOCKET* lpSock = &m_Sock;
+		unSOCKADDR_IN* lpSockInfo = &m_SockInfo;
+		if(i == eWINSOCK_USE_IPv6)
 		{
-			mLOG("Bind error [%s]%s : %d [%d]", _bIsServer ? "server" : "client", _csIP == nullptr ? "null" : _csIP, _iPort, WSAGetLastError());
+			iFamily = AF_INET6;
+			lpSock = &m_SockIPv6;
+			lpSockInfo = &m_SockInfoIPv6;
+		}
+
+		addrinfo addrIn;
+		addrinfo* addrRes;
+
+		memset(&addrIn, 0, sizeof(addrIn));
+		addrIn.ai_family = iFamily;
+		addrIn.ai_socktype = SOCK_DGRAM;
+		addrIn.ai_flags = AI_PASSIVE;
+
+		getaddrinfo(nullptr, _csPort, &addrIn, &addrRes);
+		*lpSock = socket(addrRes->ai_family, addrRes->ai_socktype, addrRes->ai_protocol);
+		memcpy(lpSockInfo, addrRes->ai_addr, sizeof(unSOCKADDR_IN));
+
+		freeaddrinfo(addrRes);
+
+		if(*lpSock == INVALID_SOCKET)
+		{
+			mLOG("Socket error %s [%d]", _csPort, WSAGetLastError());
+			return false;
+		}
+
+		//수신 타임아웃 설정
+		if(setsockopt(*lpSock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
+		{
+			mLOG("Timeout setting fail %s [%d]", _csPort, WSAGetLastError());
+			return false;
+		}
+
+		//바인드
+		if(bind(*lpSock, (sockaddr*)lpSockInfo, sizeof(unSOCKADDR_IN)) != 0)
+		{
+			mLOG("Bind error %s [%d]", _csPort, WSAGetLastError());
 			return false;
 		}
 	}
 
-	//상태 변경하고 스레드 시작
 	m_iStatus = eTHREAD_STATUS_RUN;
-	m_pRecvThread = new std::thread([&]() {recvThread(); });
-	m_pSendThread = new std::thread([&]() {sendThread(); });
+
+	if(m_Sock != INVALID_SOCKET)
+		m_pRecvThread = new std::thread([&]() {recvThread(m_Sock); });
+	if(m_SockIPv6 != INVALID_SOCKET)
+		m_pRecvThreadIPv6 = new std::thread([&]() {recvThread(m_SockIPv6); });
+	m_pSendThread = new std::thread([&]() {sendThread(true); });
 
 	return true;
 }
@@ -170,7 +262,7 @@ void cUDPSocket::stop()
 		return;
 	}
 
-	mLOG("Begin stop %d", m_iPort);
+	mLOG("Begin stop %lld", m_Sock);
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;
@@ -180,16 +272,6 @@ void cUDPSocket::stop()
 
 	//자고 있는 스레드들 깨워줌
 	m_cvWaiter.notify_all();
-
-	//중단처리 스레드
-	if(m_pStoppingThread != nullptr)
-		KILL(m_pStoppingThread);
-	m_pStoppingThread = new std::thread([&]() {stoppingThread(); });
-}
-
-void cUDPSocket::stoppingThread()
-{
-	mLOG("Begin stop thread %d", m_iPort);
 
 	//스레드 정지 대기
 	m_pSendThread->join();
@@ -216,6 +298,4 @@ void cUDPSocket::stoppingThread()
 
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
-
-	mLOG("Success stop thread %d", m_iPort);
 }

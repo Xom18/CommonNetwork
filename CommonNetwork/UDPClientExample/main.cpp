@@ -24,7 +24,7 @@ int main()
 	std::string strIP;
 	std::cin >> strIP;
 
-	g_UDPClient.begin(false, (char*)strIP.c_str());
+	g_UDPClient.beginClient((char*)strIP.c_str(), _DEFAULT_PORT);
 	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)
@@ -56,7 +56,7 @@ void recvThread()
 			cPacketUDP* lpPacket = qRecvQueue.front();
 			qRecvQueue.pop_front();
 
-			printf("[RecvMessage]%lld : %s\n", lpPacket->m_AddrInfo.sin_port, lpPacket->m_pData);
+			printf("[RecvMessage]%s\n", lpPacket->m_pData);
 
 			//반드시 처리한 뒤 패킷 delete
 			delete lpPacket;

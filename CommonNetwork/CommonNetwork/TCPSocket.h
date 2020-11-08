@@ -18,9 +18,8 @@ class cTCPSocket
 private:
 	int*	m_lpMasterStatus;					//서버에서 지정하는 상태
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
-	int		m_iPort;							//포트
 	SOCKET	m_Sock;								//소켓
-	sockaddr_in m_SockInfo;						//소켓 정보
+	unSOCKADDR_IN m_SockInfo;					//소켓 정보
 
 	std::mutex m_mtxSendMutex;					//송신 뮤텍스
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
@@ -96,7 +95,7 @@ public:
 	/// <param name="_Sock">연결요청자의 소켓</param>
 	/// <param name="_Addr">연결요청자의 Addr</param>
 	/// <param name="_iAddrLength">Addr 크기</param>
-	void setSocket(SOCKET _Sock, sockaddr_in* _Addr, int _iAddrLength, int* _lpMasterStatus)
+	void setSocket(SOCKET _Sock, unSOCKADDR_IN* _Addr, int _iAddrLength, int* _lpMasterStatus)
 	{
 		m_Sock = _Sock;
 		memcpy(&m_SockInfo, _Addr, _iAddrLength);
@@ -107,7 +106,7 @@ public:
 	/// </summary>
 	/// <param name="_csIP">IP</param>
 	/// <param name="_iPort">포트(기본 58326)</param>
-	bool tryConnectServer(char* _csIP, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
+	bool tryConnectServer(const char* _csIP, const char* _csPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
 
 	/// <summary>
 	/// 스레드 정지
@@ -132,7 +131,7 @@ public:
 	/// 소켓 정보 받아오는거
 	/// </summary>
 	/// <returns>m_SockInfo</returns>
-	inline sockaddr_in* getSockinfo()
+	inline unSOCKADDR_IN* getSockinfo()
 	{
 		return &m_SockInfo;
 	}

@@ -25,30 +25,30 @@ private:
 	std::condition_variable	m_cvWaiter;			//대기용
 	std::thread* m_pSendThread;					//송신 스레드
 	std::thread* m_pRecvThread;					//수신 스레드
-	std::thread* m_pStoppingThread;				//중단 스레드
+	std::thread* m_pRecvThreadIPv6;				//수신 스레드
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
-	int		m_iPort;							//포트
-	SOCKET	m_Sock;								//소켓
-	sockaddr_in m_SockInfo;						//소켓 정보
 
+	SOCKET	m_Sock;								//소켓
+	unSOCKADDR_IN m_SockInfo;					//소켓 정보
+
+	SOCKET	m_SockIPv6;							//소켓
+	unSOCKADDR_IN m_SockInfoIPv6;				//소켓 정보
 public:
 	cUDPSocket()//생성자
 	{
 		m_pSendThread = nullptr;	//송신 스레드
 		m_pRecvThread = nullptr;	//수신 스레드
-		m_pStoppingThread = nullptr;//중단 스레드
+		m_pRecvThreadIPv6 = nullptr;//수신 스레드(ipv6)
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
-		m_iPort = _DEFAULT_PORT;	//포트
 		m_Sock = INVALID_SOCKET;
+		m_SockIPv6 = INVALID_SOCKET;
 		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));
+		ZeroMemory(&m_SockInfoIPv6, sizeof(m_SockInfoIPv6));
 	};
 
 	~cUDPSocket()//소멸자
 	{
 		stop();
-		if(m_pStoppingThread != nullptr)
-			m_pStoppingThread->join();
-		KILL(m_pStoppingThread);
 	}
 
 
@@ -56,14 +56,14 @@ private:
 	/// <summary>
 	/// 수신 스레드
 	/// </summary>
-	void recvThread();
+	void recvThread(SOCKET _Sock);
 
 	/// <summary>
 	/// 송신 스레드
 	///	브로드캐스트를 지원하려 했으나 WAN환경에서 사용시에는
 	/// 별도의 네트워크 장비가 필요해서 미구현
 	/// </summary>
-	void sendThread();
+	void sendThread(bool _bIsServer);
 
 	/// <summary>
 	/// 수신받을걸 수신큐에 넣는 함수
@@ -75,19 +75,26 @@ private:
 		m_qRecvQueue.push_back(_lpPacket);
 	}
 
-	/// <summary>
-	/// 중단 마무리 스레드
-	/// </summary>
-	void stoppingThread();
-
 public:
+	
 	/// <summary>
-	/// 소켓 시작
+	/// 서버 시작
 	/// </summary>
-	/// <param name="_bIsServer">서버인지 클라인지</param>
-	/// <param name="_csIP">IP주소, nullptr이면 ADDR_ANY</param>
-	/// <param name="_iPort">포트번호</param>
-	bool begin(bool _bIsServer, char* _csIP = nullptr, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT);
+	/// <param name="_csPort">포트</param>
+	/// <param name="_iMode">IPv4, IPv6, BOTH</param>
+	/// <param name="_iTimeOut">수신 타임아웃</param>
+	/// <returns>성공 여부</returns>
+	bool beginServer(const char* _csPort = _DEFAULT_PORT, int _iMode = eWINSOCK_USE_BOTH, int _iTimeOut = _DEFAULT_TIME_OUT);
+
+	/// <summary>
+	/// 클라이언트 시작
+	/// </summary>
+	/// <param name="_csIP">연결 할 서버 IP</param>
+	/// <param name="_csPort">포트</param>
+	/// <param name="_iMode">IPv4, IPv6, BOTH</param>
+	/// <param name="_iTimeOut">수신 타임아웃</param>
+	/// <returns>성공 여부</returns>
+	bool beginClient(const char* _csIP, const char* _csPort = _DEFAULT_PORT, int _iMode = eWINSOCK_USE_BOTH, int _iTimeOut = _DEFAULT_TIME_OUT);
 
 	/// <summary>
 	/// 스레드 정지
@@ -107,7 +114,7 @@ public:
 	/// 소켓 정보 받아오는거
 	/// </summary>
 	/// <returns>m_SockInfo</returns>
-	inline sockaddr_in* getSockinfo()
+	inline unSOCKADDR_IN* getSockinfo()
 	{
 		return &m_SockInfo;
 	}
@@ -118,7 +125,7 @@ public:
 	/// <param name="_lpAddrInfo">수신 또는 송신받을 대상</param>
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
-	inline void pushSend(int _iSize, char* _lpData, sockaddr_in* _lpAddrInfo = nullptr)
+	inline void pushSend(int _iSize, char* _lpData, unSOCKADDR_IN* _lpAddrInfo = nullptr)
 	{
 		//UDP는 패킷 크기가 커질수록 도착할 확률이 낮아져서 일부러 작게함
 		if (_iSize >= _MAX_UDP_DATA_SIZE)

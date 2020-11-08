@@ -12,7 +12,7 @@
 
 void cTCPSocket::recvThread()
 {
-	mLOG("Begin recvThread %d", m_iPort);
+	mLOG("Begin recvThread %lld", m_Sock);
 
 	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
 	int ClientAddrLength = sizeof(sockaddr_in);
@@ -39,12 +39,12 @@ void cTCPSocket::recvThread()
 
 	pKILL(pRecvBuffer);
 
-	mLOG("End recvThread %d", m_iPort);
+	mLOG("End recvThread %lld", m_Sock);
 }
 
 void cTCPSocket::sendThread()//송신 스레드
 {
-	mLOG("Begin sendThread %d", m_iPort);
+	mLOG("Begin sendThread %lld", m_Sock);
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 	while(m_iStatus == eTHREAD_STATUS_RUN)
@@ -102,68 +102,69 @@ void cTCPSocket::sendThread()//송신 스레드
 	}
 
 	pKILL(pSendBuffer);
-	mLOG("End sendThread %d", m_iPort);
+	mLOG("End sendThread %lld", m_Sock);
 }
 
 //스레드 시작
-bool cTCPSocket::tryConnectServer(char* _csIP, int _iPort, int _iTimeOut, bool _bUseNoDelay)
+bool cTCPSocket::tryConnectServer(const char* _csIP, const char* _csPort, int _iTimeOut, bool _bUseNoDelay)
 {
 	if(m_pRecvThread != nullptr
 	|| m_pSendThread != nullptr)
 	{
-		mLOG("Begin error %d", _iPort);
+		mLOG("Begin error %s", _csPort);
 		return false;
 	}
 
 	WSADATA wsaData;							//윈속 데이터
-	WORD wVersion = MAKEWORD(1, 0);				//버전
+	WORD wVersion = MAKEWORD(2, 2);				//버전
 	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
 	if(iWSOK != 0)
 	{
-		mLOG("Socket start error %d", _iPort);
+		mLOG("Socket start error %s", _csPort);
 		ExitProcess(EXIT_FAILURE);
 	}
 
-	m_iPort = _iPort;									//포트
-	m_Sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);	//소켓 생성
+	addrinfo addrIn;
+	addrinfo* addrRes;
 
-	if(m_Sock == INVALID_SOCKET)
-	{
-		mLOG("Socket error %d", _iPort);
-		return false;
-	}
+	memset(&addrIn, 0, sizeof(addrIn));
+	addrIn.ai_family = AF_UNSPEC;
+	addrIn.ai_socktype = SOCK_STREAM;
+	addrIn.ai_flags = AI_PASSIVE;
 
-	inet_pton(AF_INET, _csIP, &m_SockInfo.sin_addr);	//특정 IP만 대상
+	getaddrinfo(_csIP, _csPort, &addrIn, &addrRes);
+	m_Sock = socket(addrRes->ai_family, addrRes->ai_socktype, addrRes->ai_protocol);
+	memcpy(&m_SockInfo, addrRes->ai_addr, sizeof(m_SockInfo));
 
-	m_SockInfo.sin_family = AF_INET;					//TCP 사용
-	m_SockInfo.sin_port = htons(_iPort);				//포트
+	freeaddrinfo(addrRes);
 
 	//노딜레이 옵션, 0아닌게 반환되면 뭐가 문제가 있다
 	bool bUseNoDelay = _bUseNoDelay;
 	if(setsockopt(m_Sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&bUseNoDelay, sizeof(bUseNoDelay)) != 0)
 	{
-		mLOG("Nodelay setting fail %d", _iPort);
+		mLOG("Nodelay setting fail %s", _csPort);
 		return false;
 	}
 
 	//수신 타임아웃 설정
 	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
 	{
-		mLOG("Timeout setting fail %d", _iPort);
+		mLOG("Timeout setting fail %s", _csPort);
 		return false;
 	}
 
 	//연결 시도
-	int iErrorCode = connect(m_Sock, (sockaddr*)&m_SockInfo, sizeof(m_SockInfo));
-	if(iErrorCode != 0)
+	int iErrorCoded = connect(m_Sock, (sockaddr*)&m_SockInfo, sizeof(m_SockInfo));
+	if(iErrorCoded != 0)
 	{
-		mLOG("Connect error %lld", m_Sock);
+		mLOG("Connect error %lld, %d", m_Sock, WSAGetLastError());
 		return false;
 	}
 	mLOG("Connect success %lld", m_Sock);
 
 	//연결 성공했으니 스레드 시작
 	begin();
+
 	return true;
 }
 

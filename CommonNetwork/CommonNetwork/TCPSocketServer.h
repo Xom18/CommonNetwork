@@ -32,13 +32,16 @@ private:
 	std::deque<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 
 	std::thread* m_pConnectThread;				//연결 대기 스레드
+	std::thread* m_pConnectIPv6Thread;			//연결 대기 스레드
 	std::thread* m_pOperateThread;				//처리 스레드(패킷수신, 전역송신)
 
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
-	int		m_iPort;							//포트
 	int		m_iOperateTick;						//처리 간격
 	SOCKET	m_Sock;								//소켓
-	sockaddr_in m_SockInfo;						//소켓 정보
+	unSOCKADDR_IN m_SockInfo;					//소켓 정보
+
+	SOCKET	m_SockIPv6;							//소켓(IPv6)
+	unSOCKADDR_IN m_SockInfoIPv6;				//소켓 정보(IPv6)
 
 	std::map<SOCKET, cTCPSocket*> m_mapTCPSocket;	//연결되있는 TCP 소켓들, 특정 대상 패킷처리 원활하게 인덱스로 잡혀있음
 	//연결 대기 큐
@@ -48,11 +51,13 @@ public:
 	cTCPSocketServer()//생성자
 	{
 		m_pConnectThread = nullptr;	//연결 대기 스레드
+		m_pConnectIPv6Thread = nullptr; //ipv6 대기 스레드
 		m_pOperateThread = nullptr;	//수신 스레드
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
-		m_iPort = _DEFAULT_PORT;	//포트
 		m_Sock = INVALID_SOCKET;
+		m_SockIPv6 = INVALID_SOCKET;
 		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));
+		ZeroMemory(&m_SockInfoIPv6, sizeof(m_SockInfoIPv6));
 	};
 
 	~cTCPSocketServer()//소멸자
@@ -64,7 +69,7 @@ private:
 	/// <summary>
 	/// 연결 수립 스레드
 	/// </summary>
-	void connectThread();
+	void connectThread(SOCKET _Socket);
 
 	/// <summary>
 	/// 처리 스레드
@@ -101,7 +106,7 @@ public:
 	/// <param name="_iPort">포트(기본 58326)</param>
 	/// <param name="_iTimeOut">타임아웃 옵션</param>
 	/// <param name="_bUseNoDelay">노딜레이 옵션</param>
-	bool begin(int _iPort = _DEFAULT_PORT, int _iTick = _DEFAULT_TICK, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
+	bool begin(const char* _csPort = _DEFAULT_PORT, int _iMode = eWINSOCK_USE_BOTH, int _iTick = _DEFAULT_TICK, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
 
 	/// <summary>
 	/// 스레드 정지
@@ -121,9 +126,9 @@ public:
 	/// 소켓 정보 받아오는거
 	/// </summary>
 	/// <returns>m_SockInfo</returns>
-	inline sockaddr_in* getSockinfo()
+	inline unSOCKADDR_IN getSockinfo()
 	{
-		return &m_SockInfo;
+		return m_SockInfo;
 	}
 
 	/// <summary>

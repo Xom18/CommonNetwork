@@ -21,7 +21,7 @@ cUDPSocket g_UDPServer;	//클라
 void recvThread();
 int main()
 {
-	g_UDPServer.begin(true);
+	g_UDPServer.beginServer(_DEFAULT_PORT);
 	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)
@@ -51,7 +51,7 @@ void recvThread()
 			cPacketUDP* lpPacket = qRecvQueue.front();
 			qRecvQueue.pop_front();
 
-			printf("[RecvMessage]%lld : %s\n", lpPacket->m_AddrInfo.sin_port, lpPacket->m_pData);
+			printf("[RecvMessage]%s\n", lpPacket->m_pData);
 			g_UDPServer.pushSend(lpPacket->m_iSize, lpPacket->m_pData, &lpPacket->m_AddrInfo);
 
 			//반드시 처리한 뒤 패킷 delete

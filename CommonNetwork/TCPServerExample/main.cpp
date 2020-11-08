@@ -21,7 +21,15 @@ cTCPSocketServer g_TCPServer;	//클라
 void recvThread();
 int main()
 {
-	g_TCPServer.begin();
+	std::string strNum;
+	std::cin >> strNum;
+	if(strcmp(strNum.c_str(), "6") == 0)
+		g_TCPServer.begin(_DEFAULT_PORT, eWINSOCK_USE_IPv6);
+	else if(strcmp(strNum.c_str(), "4") == 0)
+		g_TCPServer.begin(_DEFAULT_PORT, eWINSOCK_USE_IPv4);
+	else
+		g_TCPServer.begin();
+
 	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)

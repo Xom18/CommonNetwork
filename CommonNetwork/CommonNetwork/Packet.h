@@ -6,7 +6,7 @@
 class cPacketUDP
 {
 public:
-	sockaddr_in m_AddrInfo;	//송신자 또는 수신자
+	unSOCKADDR_IN m_AddrInfo;//송신자 또는 수신자
 	int m_iSize;			//데이터 크기
 	char* m_pData;			//데이터
 
@@ -21,10 +21,10 @@ public:
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
 	/// <param name="_lpAddrInfo">송신자 또는 수신자 정보</param>
-	void setData(int _iSize, char* _lpData, sockaddr_in* _lpAddrInfo = nullptr)
+	void setData(int _iSize, char* _lpData, unSOCKADDR_IN* _lpAddrInfo = nullptr)
 	{
 		if(_lpAddrInfo != nullptr)
-			memcpy(&m_AddrInfo, _lpAddrInfo, sizeof(sockaddr_in));
+			memcpy(&m_AddrInfo, _lpAddrInfo, sizeof(unSOCKADDR_IN));
 		m_iSize = _iSize;
 		m_pData = new char[_iSize];
 		ZeroMemory(m_pData, _iSize);

@@ -12,17 +12,17 @@
 #include "TCPSocket.h"
 #include "TCPSocketServer.h"
 
-void cTCPSocketServer::connectThread()
+void cTCPSocketServer::connectThread(SOCKET _Socket)
 {
-	mLOG("Begin connectThread %d", m_iPort);
-	int ClientAddrLength = sizeof(sockaddr_in);
+	mLOG("Begin connectThread %lld", _Socket);
+	int ClientAddrLength = sizeof(unSOCKADDR_IN);
 
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
-		sockaddr_in Client;
+		unSOCKADDR_IN Client;
 		ZeroMemory(&Client, sizeof(Client));
 
-		SOCKET Socket = accept(m_Sock, (sockaddr*)&Client, &ClientAddrLength);
+		SOCKET Socket = accept(_Socket, (sockaddr*)&Client, &ClientAddrLength);
 		if(Socket == INVALID_SOCKET)
 			continue;
 
@@ -37,14 +37,14 @@ void cTCPSocketServer::connectThread()
 		}
 	}
 
-	mLOG("End connectThread %d", m_iPort);
+	mLOG("End connectThread %lld", _Socket);
 }
 
 // 처리 스레드
 // 패킷 가져오고 전역패킷 보내고 처리
 void cTCPSocketServer::operateThread()
 {
-	mLOG("Begin operateThread %d\n", m_iPort);
+	mLOG("Begin operateThread\n");
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 
@@ -189,70 +189,99 @@ void cTCPSocketServer::operateThread()
 }
 
 //스레드 시작
-bool cTCPSocketServer::begin(int _iPort, int _iTick, int _iTimeOut, bool _bUseNoDelay)
+bool cTCPSocketServer::begin(const char* _csPort, int _iMode, int _iTick, int _iTimeOut, bool _bUseNoDelay)
 {
-	if(m_pConnectThread != nullptr
-	|| m_pOperateThread != nullptr)
+	if(m_iStatus != eTHREAD_STATUS_IDLE)
 	{
-		mLOG("Begin error %d", _iPort);
+		mLOG("Begin error %s", _csPort);
 		return false;
 	}
 
 	WSADATA wsaData;							//윈속 데이터
-	WORD wVersion = MAKEWORD(1, 0);				//버전
+	WORD wVersion = MAKEWORD(2, 2);				//버전
 	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
 	if(iWSOK != 0)
 	{
-		mLOG("Socket start error %d", _iPort);
+		mLOG("Socket start error %lld", m_Sock);
 		return false;
 	}
 
-	m_iPort = _iPort;									//포트
-	m_Sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);	//소켓 생성
-
-	if(m_Sock == INVALID_SOCKET)
-	{
-		mLOG("Socket error %d", _iPort);
-		return false;
-	}
-
-	m_SockInfo.sin_addr.S_un.S_addr = ADDR_ANY;		//전체 대상
-
-	m_SockInfo.sin_family = AF_INET;					//TCP 사용
-	m_SockInfo.sin_port = htons(m_iPort);				//포트
-	
 	m_iOperateTick = _iTick;
 
-	//노딜레이 옵션, 0아닌게 반환되면 뭐가 문제가 있다
-	bool bUseNoDelay = _bUseNoDelay;
-	if(setsockopt(m_Sock, IPPROTO_TCP, TCP_NODELAY, (const char*)&bUseNoDelay, sizeof(bUseNoDelay)) != 0)
+	//eWINSOCK_USE_IPv4 = 1,	//IPv4 전용
+	//eWINSOCK_USE_IPv6 = 2,	//IPv6 전용
+	//eWINSOCK_USE_BOTH = 3,	//둘다 사용
+	for(int i = 1; i < eWINSOCK_USE_BOTH; ++i)
 	{
-		mLOG("Nodelay setting fail %d", _iPort);
-		return false;
+		if(!(_iMode & i))
+			continue;
+
+		//소켓 정보 셋팅
+		int iFamily = AF_INET;
+		SOCKET* lpSock = &m_Sock;
+		unSOCKADDR_IN* lpSockInfo = &m_SockInfo;
+		if(i == eWINSOCK_USE_IPv6)
+		{
+			iFamily = AF_INET6;
+			lpSock = &m_SockIPv6;
+			lpSockInfo = &m_SockInfoIPv6;
+		}
+
+		addrinfo addrIn;
+		addrinfo* addrRes;
+
+		memset(&addrIn, 0, sizeof(addrIn));
+		addrIn.ai_family = iFamily;
+		addrIn.ai_socktype = SOCK_STREAM;
+		addrIn.ai_flags = AI_PASSIVE;
+
+		getaddrinfo(nullptr, _csPort, &addrIn, &addrRes);
+		*lpSock = socket(addrRes->ai_family, addrRes->ai_socktype, addrRes->ai_protocol);
+		memcpy(lpSockInfo, addrRes->ai_addr, sizeof(unSOCKADDR_IN));
+
+		freeaddrinfo(addrRes);
+
+		if(*lpSock == INVALID_SOCKET)
+		{
+			mLOG("Socket error %s [%d]", _csPort, WSAGetLastError());
+			return false;
+		}
+
+		//노딜레이 옵션, 0아닌게 반환되면 뭐가 문제가 있다
+		bool bUseNoDelay = _bUseNoDelay;
+		if(setsockopt(*lpSock, IPPROTO_TCP, TCP_NODELAY, (const char*)&bUseNoDelay, sizeof(bUseNoDelay)) != 0)
+		{
+			mLOG("Nodelay setting fail %s [%d]", _csPort, WSAGetLastError());
+			return false;
+		}
+
+		//수신 타임아웃 설정
+		if(setsockopt(*lpSock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
+		{
+			mLOG("Timeout setting fail %s [%d]", _csPort, WSAGetLastError());
+			return false;
+		}
+
+		//바인드
+		if(bind(*lpSock, (sockaddr*)lpSockInfo, sizeof(unSOCKADDR_IN)) != 0)
+		{
+			mLOG("Bind error %s [%d]", _csPort, WSAGetLastError());
+			return false;
+		}
+
+		//리슨
+		if(listen(*lpSock, SOMAXCONN) != 0)
+		{
+			mLOG("listen error %s [%d]", _csPort, WSAGetLastError());
+			return false;
+		}
 	}
 
-	//수신 타임아웃 설정
-	if(setsockopt(m_Sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&_iTimeOut, sizeof(_iTimeOut)) != 0)
-	{
-		mLOG("Timeout setting fail %d", _iPort);
-		return false;
-	}
-
-	if(bind(m_Sock, (sockaddr*)&m_SockInfo, sizeof(sockaddr_in)) != 0)
-	{
-		mLOG("Bind error %d [%d]", _iPort, WSAGetLastError());
-		return false;
-	}
-
-	if(listen(m_Sock, SOMAXCONN) != 0)
-	{
-		mLOG("listen error %d", _iPort);
-		return false;
-	}
-
-	//상태 변경하고 스레드 시작
 	m_iStatus = eTHREAD_STATUS_RUN;
-	m_pConnectThread = new std::thread([&]() {connectThread(); });
+	if(_iMode & eWINSOCK_USE_IPv4)
+		m_pConnectThread = new std::thread([&]() {connectThread(m_Sock); });
+	if(_iMode & eWINSOCK_USE_IPv6)
+		m_pConnectIPv6Thread = new std::thread([&]() {connectThread(m_SockIPv6); });
 	m_pOperateThread = new std::thread([&]() {operateThread(); });
 
 	return true;
@@ -266,7 +295,7 @@ void cTCPSocketServer::stop()
 	|| m_iStatus == eTHREAD_STATUS_STOP)
 		return;
 
-	mLOG("Begin stop %d", m_iPort);
+	mLOG("Begin stop %lld", m_Sock);
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;
@@ -277,10 +306,12 @@ void cTCPSocketServer::stop()
 	//스레드 정지 대기
 	m_pOperateThread->join();
 	m_pConnectThread->join();
+	m_pConnectIPv6Thread->join();
 
 	//변수 해제
 	KILL(m_pOperateThread);
 	KILL(m_pConnectThread);
+	KILL(m_pConnectIPv6Thread);
 
 	//연결 대기중인거 처리
 	operateConnectWait();
@@ -340,5 +371,5 @@ void cTCPSocketServer::stop()
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
 
-	mLOG("Success stop %d", m_iPort);
+	mLOG("Success stop %lld", m_Sock);
 }
