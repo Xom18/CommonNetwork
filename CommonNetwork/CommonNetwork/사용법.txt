@@ -11,29 +11,34 @@ UDP 통신 - 클라이언트, 서버
 
 cUDPSocket 사용
 
-1. void begin(bool _bIsServer, char* _csIP, int _iPort, int _iTimeOut)
-사용하여 스레드 시작
+1 - 1. bool beginServer(const char* _csPort, int _iMode, int _iTimeOut);
+사용하여 서버 스레드 시작
 - _bIsServer: true를 입력하게 되면 서버 false를 입력하게 되면 클라이언트
-- _csIP		: IP입력, 서버는 필요없음
-- _iPort	: 통신에 사용할 포트, 기본 58326
+- _csPort	: 통신에 사용할 포트, 기본 58326
+_ _iMode	: IPv4전용, IPv6전용, 둘 다 사용, 기본 eWINSOCK_USE_BOTH
+- _iTimeOut : 타임아웃, 기본 5000ms
+
+1 - 2. bool beginClient(const char* _csIP, const char* _csPort, int _iTimeOut);
+사용하여 서버 스레드 시작
+- _csIP		: 서버 주소(IPv4, IPv6 둘 다 사용가능)
+- _csPort	: 통신에 사용할 포트, 기본 58326
 - _iTimeOut : 타임아웃, 기본 5000ms
 
 2. 멈추고 싶을 땐 void stop() 호출
 
-3. 패킷 추가는 void pushSend(int _iSize, char* _lpData, sockaddr_in* _lpAddrInfo = nullptr)
+3. 패킷 추가는 void pushSend(int _iSize, char* _lpData, unSOCKADDR_IN* _lpAddrInfo = nullptr)
 - _iSize	: 패킷 크기
 - _lpData	: 데이터
-- _lpAddrInfo: 수신받을 대상의 sockaddr_in
+- _lpAddrInfo: 수신받을 대상의 unSOCKADDR_IN
 
 4. 패킷 받아오는거는두가지 방법 존재
-4-1. bool getRecvQueue(std::deque<cPacketUDP*>* _lpQueue, bool _bFlush = true)
+4-1. 내용물 복제하는거, bool getRecvQueue(std::deque<cPacketUDP*>* _lpQueue, bool _bFlush = true)
 - _lpQueue	: 패킷 받아올 큐
 - _bFlush	: 초기화 여부
-_lpQueue에 내용물 복제하는거
 
-4-2. bool swapRecvQueue(std::deque<cPacketUDP*>* _lpQueue)
+
+4-2. 갖고있는 패킷 큐를 swap, bool swapRecvQueue(std::deque<cPacketUDP*>* _lpQueue)
 - _lpQueue	: 패킷 받아올 큐
-_lpQueue와 갖고있는 패킷 큐를 swap
 
 
 ===========================================================================================
@@ -42,7 +47,7 @@ _lpQueue와 갖고있는 패킷 큐를 swap
 TCP 통신 - 클라이언트
 
 cTCPSocket 사용
-1. bool tryConnectServer(char* _csIP, int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
+1. bool tryConnectServer(const char* _csIP, const char* _csPort, int _iTimeOut, bool _bUseNoDelay);
 사용하여 스레드 시작
 - _csIP		: 서버 IP
 - _iPort	: 통신에 사용할 포트, 기본 58326
@@ -56,14 +61,13 @@ cTCPSocket 사용
 - _lpData	: 데이터
 
 4. 패킷 받아오는거는두가지 방법 존재
-4-1. bool getRecvQueue(std::deque<cPacketTCP*>* _lpQueue, bool _bFlush = true)
+4-1. 내용물 복제하는거, bool getRecvQueue(std::deque<cPacketTCP*>* _lpQueue, bool _bFlush = true)
 - _lpQueue	: 패킷 받아올 큐
 - _bFlush	: 초기화 여부
-_lpQueue에 내용물 복제하는거
 
-4-2. bool swapRecvQueue(std::deque<cPacketTCP*>* _lpQueue)
+4-2. 갖고있는 패킷 큐를 swap, bool swapRecvQueue(std::deque<cPacketTCP*>* _lpQueue)
 - _lpQueue	: 패킷 받아올 큐
-_lpQueue와 갖고있는 패킷 큐를 swap
+
 
 
 ===========================================================================================
@@ -73,9 +77,11 @@ TCP 통신 - 서버
 
 cTCPSocketServer 사용
 
-1. void begin(int _iPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
+1. bool begin(const char* _csPort, int _iMode, int _iTick, int _iTimeOut, bool _bUseNoDelay);
 사용하여 스레드 시작
-- _iPort	: 통신에 사용할 포트, 기본 58326
+- _csPort	: 통신에 사용할 포트, 기본 58326
+- _iMode	: IPv4, IPv6, 또는 둘 다, 기본 eWINSOCK_USE_BOTH
+- _iTick	: 처리 스레드 처리 간격
 - _iTimeOut : 타임아웃, 기본 5000ms
 - _bUseNoDelay: Nagle 알고리즘 사용여부, 기본 false
 
@@ -91,11 +97,9 @@ cTCPSocketServer 사용
 - _lpData	: 데이터
 
 5. 패킷 받아오는거는두가지 방법 존재
-5-1. bool getRecvQueue(std::deque<cPacketTCP*>* _lpQueue, bool _bFlush = true)
+5-1. 내용물 복제하는거, bool getRecvQueue(std::deque<cPacketTCP*>* _lpQueue, bool _bFlush = true)
 - _lpQueue	: 패킷 받아올 큐
 - _bFlush	: 초기화 여부
-_lpQueue에 내용물 복제하는거
 
-5-2. bool swapRecvQueue(std::deque<cPacketTCP*>* _lpQueue)
+5-2. 갖고있는 패킷 큐를 swap, bool swapRecvQueue(std::deque<cPacketTCP*>* _lpQueue)
 - _lpQueue	: 패킷 받아올 큐
-_lpQueue와 갖고있는 패킷 큐를 swap
