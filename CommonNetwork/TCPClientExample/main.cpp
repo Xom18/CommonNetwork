@@ -38,6 +38,8 @@ int main()
 			g_TCPClient.stop();
 			break;
 		}
+
+		g_TCPClient.pushSend(strText.length() + 1, (char*)strText.c_str());
 	}
 
 	RecvThread.join();
