@@ -109,7 +109,7 @@ void cUDPSocket::sendThread(bool _bIsServer)//송신 스레드
 }
 
 //클라이언트 시작
-bool cUDPSocket::beginClient(const char* _csIP, const char* _csPort, int _iMode, int _iTimeOut)
+bool cUDPSocket::beginClient(const char* _csIP, const char* _csPort, int _iTimeOut)
 {
 	mLOG("Begin [Client]%s : %s", _csIP == nullptr ? "null" : _csIP, _csPort);
 

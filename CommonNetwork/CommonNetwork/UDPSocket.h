@@ -91,10 +91,9 @@ public:
 	/// </summary>
 	/// <param name="_csIP">연결 할 서버 IP</param>
 	/// <param name="_csPort">포트</param>
-	/// <param name="_iMode">IPv4, IPv6, BOTH</param>
 	/// <param name="_iTimeOut">수신 타임아웃</param>
 	/// <returns>성공 여부</returns>
-	bool beginClient(const char* _csIP, const char* _csPort = _DEFAULT_PORT, int _iMode = eWINSOCK_USE_BOTH, int _iTimeOut = _DEFAULT_TIME_OUT);
+	bool beginClient(const char* _csIP, const char* _csPort = _DEFAULT_PORT, int _iTimeOut = _DEFAULT_TIME_OUT);
 
 	/// <summary>
 	/// 스레드 정지
