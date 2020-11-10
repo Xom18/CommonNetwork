@@ -4,6 +4,7 @@
 #include <map>
 #include <list>
 #include <condition_variable>
+#include <set>
 #include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
@@ -25,6 +26,40 @@ void cTCPSocketServer::connectThread(SOCKET _Socket)
 		SOCKET Socket = accept(_Socket, (sockaddr*)&Client, &ClientAddrLength);
 		if(Socket == INVALID_SOCKET)
 			continue;
+
+		//리스트에 내용이 있을때만 동작
+		if(!m_setBWList.empty())
+		{
+			char csClientIP[_IP_LENGTH];
+			if(Client.IPv4.sin_family == AF_INET)
+				inet_ntop(AF_INET, &Client.IPv4.sin_addr, csClientIP, sizeof(csClientIP));
+			else
+				inet_ntop(AF_INET6, &Client.IPv6.sin6_addr, csClientIP, sizeof(csClientIP));
+
+			std::string strIP = csClientIP;
+
+			//찾았는지 여부
+			bool bIsFound = false;
+			{
+				mAMTX(m_mtxBWListMutex);
+				bIsFound = m_setBWList.find(strIP) != m_setBWList.end();
+			}
+			//킥 여부
+			bool bIsKick = false;
+			
+			//블랙리스트일 때 찾았으면 튕겨냄
+			//화이트리스트일 때 못찾았으면 튕겨냄
+			if(m_bIsBlackList && bIsFound)
+				bIsKick = true;
+			else if(!m_bIsBlackList && !bIsFound)
+				bIsKick = true;
+
+			if(bIsKick)
+			{
+				closesocket(Socket);
+				continue;
+			}
+		}
 
 		cTCPSocket* pNewSocket = new cTCPSocket();
 		pNewSocket->setSocket(Socket, &Client, ClientAddrLength, &m_iStatus);

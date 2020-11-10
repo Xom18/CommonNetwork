@@ -6,6 +6,7 @@
 #include <deque>
 #include <map>
 #include <condition_variable>
+#include <set>
 #include "Debug.h"
 #include "Define.h"
 #include "Macro.h"

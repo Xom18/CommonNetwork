@@ -10,6 +10,7 @@
 #define _MAX_TCP_IPv6_SEGMENT_SIZE 1024	//TCP는 패킷 최대크기가 없으나 Maximum segment size 라는게 있다
 #define _DEFAULT_TIME_OUT 5000	//기본 타임아웃
 #define _DEFAULT_TICK 15	//TCP 서버 처리 간격 15ms
+#define _IP_LENGTH 64		//IP를 텍스트로 출력 할 때 쓰는 버퍼 길이
 
 enum
 {

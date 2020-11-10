@@ -26,6 +26,7 @@ private:
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
 	std::mutex m_mtxConnectionMutex;			//연결 대기 뮤텍스
 	std::mutex m_mtxSocketMutex;				//연결 뮤텍스
+	std::mutex m_mtxBWListMutex;				//블랙/화이트 리스트 뮤텍스
 
 	std::deque<cPacketTCP*>	m_qGlobalSendQueue;	//전역 송신 큐
 	std::deque<cPacketTCP*>	m_qTargetSendQueue;	//대상 송신 큐
@@ -43,9 +44,11 @@ private:
 	SOCKET	m_SockIPv6;							//소켓(IPv6)
 	unSOCKADDR_IN m_SockInfoIPv6;				//소켓 정보(IPv6)
 
-	std::map<SOCKET, cTCPSocket*> m_mapTCPSocket;	//연결되있는 TCP 소켓들, 특정 대상 패킷처리 원활하게 인덱스로 잡혀있음
-	//연결 대기 큐
-	std::deque<cTCPSocket*> m_qConnectWait;	//연결 대기 큐
+	std::map<SOCKET, cTCPSocket*> m_mapTCPSocket;//연결되있는 TCP 소켓들, 특정 대상 패킷처리 원활하게 인덱스로 잡혀있음
+	std::deque<cTCPSocket*> m_qConnectWait;		//연결 대기 큐
+
+	bool	m_bIsBlackList;						//블랙 리스트가 아니면 화이트 리스트
+	std::set<std::string> m_setBWList;			//블랙, 화이트 리스트
 
 public:
 	cTCPSocketServer()//생성자
@@ -56,6 +59,7 @@ public:
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
 		m_Sock = INVALID_SOCKET;
 		m_SockIPv6 = INVALID_SOCKET;
+		m_bIsBlackList = false;
 		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));
 		ZeroMemory(&m_SockInfoIPv6, sizeof(m_SockInfoIPv6));
 	};
@@ -99,6 +103,7 @@ private:
 	}
 
 public:
+
 	/// <summary>
 	/// 서버 시작
 	/// </summary>
@@ -191,5 +196,34 @@ public:
 		mAMTX(m_mtxRecvMutex);
 		std::swap(m_qRecvQueue, *_lpQueue);
 		return true;
+	}
+
+	/// <summary>
+	/// 블랙리스트로 설정
+	/// </summary>
+	/// <param name="_bIsBlackList">블랙리스트인지, false면 화이트 리스트(기본 true)</param>
+	inline void setBlackList(bool _bIsBlackList = true)
+	{
+		m_bIsBlackList = true;
+	}
+
+	/// <summary>
+	/// 블랙/화이트 리스트에 대상 추가
+	/// </summary>
+	/// <param name="_lpIP">대상 IP</param>
+	inline void addBWList(std::string* _lpIP)
+	{
+		mAMTX(m_mtxBWListMutex);
+		m_setBWList.insert(*_lpIP);
+	}
+
+	/// <summary>
+	/// 블랙/화이트 리스트에 대상 제거
+	/// </summary>
+	/// <param name="_lpIP">대상 IP</param>
+	inline void removeBWList(std::string* _lpIP)
+	{
+		mAMTX(m_mtxBWListMutex);
+		m_setBWList.erase(*_lpIP);
 	}
 };
