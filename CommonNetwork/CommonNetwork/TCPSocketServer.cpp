@@ -106,16 +106,19 @@ void cTCPSocketServer::operateThread()
 			}
 
 			//순서대로 처리해준다
-			cPacketTCP* pPacket = qTargetSendQueue.front();
-			qTargetSendQueue.pop_front();
-			
-			std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.find(pPacket->m_Sock);
+			while(!qTargetSendQueue.empty())
+			{
+				cPacketTCP* pPacket = qTargetSendQueue.front();
+				qTargetSendQueue.pop_front();
 
-			//패킷 대상이 누수방지를 위해 없으면 지워준다
-			if(iter == m_mapTCPSocket.end())
-				delete pPacket;
-			else
-				iter->second->pushSend(pPacket);
+				std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.find(pPacket->m_Sock);
+
+				//패킷 대상이 누수방지를 위해 없으면 지워준다
+				if(iter == m_mapTCPSocket.end())
+					delete pPacket;
+				else
+					iter->second->pushSend(pPacket);
+			}
 		}
 
 		bool bIsNotHaveSend = false;
