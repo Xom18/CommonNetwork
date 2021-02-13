@@ -24,7 +24,7 @@ int main()
 	std::string strIP;
 	std::cin >> strIP;
 
-	g_UDPClient.beginClient((char*)strIP.c_str(), _DEFAULT_PORT);
+	g_UDPClient.beginClient(strIP.c_str(), _DEFAULT_PORT);
 	std::thread RecvThread = std::thread([&]() {recvThread(); });
 
 	while(true)
@@ -39,7 +39,7 @@ int main()
 			break;
 		}
 
-		g_UDPClient.pushSend((int)strText.length() + 1, (char*)strText.c_str(), g_UDPClient.getSockinfo());
+		g_UDPClient.pushSend(static_cast<int>(strText.length()) + 1, strText.c_str(), g_UDPClient.getSockinfo());
 	}
 	RecvThread.join();
 }

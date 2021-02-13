@@ -12,7 +12,7 @@
 
 void cUDPSocket::recvThread(SOCKET _Sock)
 {
-	mLOG("Begin recvThread %lld", _Sock);
+	mLOG("Begin recvThread");
 
 	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
 	int ClientAddrLength = sizeof(unSOCKADDR_IN);
@@ -38,7 +38,7 @@ void cUDPSocket::recvThread(SOCKET _Sock)
 
 	pKILL(pRecvBuffer);
 
-	mLOG("End recvThread %lld", _Sock);
+	mLOG("End recvThread");
 }
 
 void cUDPSocket::sendThread(bool _bIsServer)//송신 스레드
@@ -91,14 +91,14 @@ void cUDPSocket::sendThread(bool _bIsServer)//송신 스레드
 			{
 				if(sendto(m_Sock, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
 				{//송신실패하면 에러
-					mLOG("Send Error %lld [%d]", m_Sock, WSAGetLastError());
+					mLOG("Send Error [%d]", WSAGetLastError());
 				}
 			}
 			else if(AddrInfo.IPv4.sin_family == AF_INET6)
 			{
 				if(sendto(m_SockIPv6, pSendBuffer, iDataSize, 0, (sockaddr*)&AddrInfo, sizeof(AddrInfo)) == SOCKET_ERROR)
 				{//송신실패하면 에러
-					mLOG("Send Error %lld [%d]", m_SockIPv6, WSAGetLastError());
+					mLOG("Send Error [%d]", WSAGetLastError());
 				}
 			}
 		}
@@ -262,7 +262,7 @@ void cUDPSocket::stop()
 		return;
 	}
 
-	mLOG("Begin stop %lld", m_Sock);
+	mLOG("Begin stop");
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;

@@ -5,18 +5,98 @@
 #include <list>
 #include <condition_variable>
 #include <set>
+#include <vector>
 #include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
 #include "AutoMutex.h"
 #include "Packet.h"
-#include "TCPSocket.h"
 #include "TCPSocketServer.h"
 
-void cTCPSocketServer::connectThread(SOCKET _Socket)
+bool cTCPClient::recvPacket()
 {
-	mLOG("Begin connectThread %lld", _Socket);
+	DWORD	dwRecv;
+	DWORD	Flags = 0;
+	if (WSARecv(m_Sock, &m_RecvOL.buf, 1, &dwRecv, &Flags, &m_RecvOL.OL, NULL) == SOCKET_ERROR)
+	{
+		DWORD dwError = WSAGetLastError();
+
+		if (dwError != WSA_IO_PENDING && dwError != ERROR_SUCCESS)
+			return false;
+	}
+
+	return true;
+}
+
+//전송 대기중인 다음 패킷 가져오는거
+bool cTCPClient::pullNextPacket()
+{
+	cPacketTCP* pPacket = nullptr;
+	
+	{
+		mAMTX(m_mtxSendMutex);
+		if (m_qSendQueue.empty())
+			return false;
+
+		pPacket = m_qSendQueue.front();
+		m_qSendQueue.pop_front();
+	}
+	m_SendOL.sendlen = pPacket->m_iSize;
+	memcpy(m_SendOL.Buffer, pPacket->m_pData, pPacket->m_iSize);
+	delete pPacket;
+
+	return true;
+}
+void cTCPClient::addSendPacket(int _iSize, const char* _lpData)
+{
+	//사용중이지 않음
+	if (!m_bIsUse)
+		return;
+
+	//현재 송신중이면 큐에 넣어놓고
+	if (m_bIsSending)
+	{
+		cPacketTCP* pNewPacket = new cPacketTCP();
+		pNewPacket->setData(_iSize, _lpData);
+
+		mAMTX(m_mtxSendMutex);
+		m_qSendQueue.push_back(pNewPacket);
+	}
+	else
+	{//송신중이 아니면 바로 전송시도
+		memcpy(m_SendOL.Buffer, _lpData, _iSize);
+		m_SendOL.sendlen = _iSize;
+		sendPacket();
+	}
+}
+
+bool cTCPClient::sendPacket()
+{
+	//사용중이지 않음
+	if (!m_bIsUse)
+		return false;
+
+	//전송상태 true로 전환
+	m_bIsSending = true;
+
+	DWORD	dwSend;
+
+	if (WSASend(m_Sock, &m_SendOL.buf, 1, &dwSend, 0, &m_SendOL.OL, NULL) == SOCKET_ERROR)
+	{
+		DWORD dwError = WSAGetLastError();
+
+		if (dwError != WSA_IO_PENDING && dwError != ERROR_SUCCESS)
+			return false;
+	}
+
+	return true;
+}
+
+void cTCPSocketServer::acceptThread(SOCKET _Socket)
+{
+	mLOG("Begin connectThread");
 	int ClientAddrLength = sizeof(unSOCKADDR_IN);
+	int iMaxBufferSize = _MAX_PACKET_SIZE;
 
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
@@ -56,170 +136,165 @@ void cTCPSocketServer::connectThread(SOCKET _Socket)
 
 			if(bIsKick)
 			{
-				closesocket(Socket);
+				disconnectNow(Socket);
 				continue;
 			}
 		}
-
-		cTCPSocket* pNewSocket = new cTCPSocket();
-		pNewSocket->setSocket(Socket, &Client, ClientAddrLength, &m_iStatus);
-		pNewSocket->begin();
-
-		//연결대기에 추가
+		
+		//버퍼 크기 잡아줌
+		if (SOCKET_ERROR == setsockopt(Socket, SOL_SOCKET, SO_SNDBUF, (const char*)&iMaxBufferSize, sizeof(iMaxBufferSize)))
 		{
-			mAMTX(m_mtxConnectionMutex);
-			m_qConnectWait.push_back(pNewSocket);
+			disconnectNow(Socket);
+			continue;
+		}
+
+		if (SOCKET_ERROR == setsockopt(Socket, SOL_SOCKET, SO_RCVBUF, (const char*)&iMaxBufferSize, sizeof(iMaxBufferSize)))
+		{
+			disconnectNow(Socket);
+			continue;
+		}
+
+		LINGER	lingerStruct;
+
+		lingerStruct.l_onoff = 1;
+		lingerStruct.l_linger = 0;
+
+		if (SOCKET_ERROR == setsockopt(Socket, SOL_SOCKET, SO_LINGER, (char*)&lingerStruct, sizeof(lingerStruct)))
+		{
+			disconnectNow(Socket);
+			continue;
+		}
+
+		//새 클라이언트 생성
+		cTCPClient* lpClient = addNewClient();
+		if (lpClient == nullptr)
+		{
+			disconnectNow(Socket);
+			continue;
+		}
+		lpClient->setSocket(Socket);
+
+		//IOCP 잡아줌
+		if (!CreateIoCompletionPort((HANDLE)Socket, m_hCompletionPort, (ULONG_PTR)lpClient->getIndex(), 0))
+		{
+			deleteClient(lpClient->getIndex());
+			disconnectNow(Socket);
+			continue;
+		}
+
+		//패킷 수신 상태로 못들어가면 뭔가 이상한거
+		if (!lpClient->recvPacket())
+		{
+			deleteClient(lpClient->getIndex());
+			disconnectNow(Socket);
+			continue;
 		}
 	}
 
-	mLOG("End connectThread %lld", _Socket);
+	mLOG("End connectThread");
 }
 
-// 처리 스레드
+// 수신 스레드
 // 패킷 가져오고 전역패킷 보내고 처리
-void cTCPSocketServer::operateThread()
+void cTCPSocketServer::workThread()
 {
 	mLOG("Begin operateThread\n");
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 
 	//삭제 처리용
-	std::list<cTCPSocket*> listDeleteWait;
+	//std::list<cTCPSocket*> listDeleteWait;
+
+	LP_IO_DATA	lpOV;
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
-		std::chrono::system_clock::time_point StartTime = std::chrono::system_clock::now();
-		
-		//삭제 처리용
-		std::deque<SOCKET> qRemoveInMap;
+//		cTCPClient* lpClient = nullptr;
+		int iIndex = -1;
 
-		//연결 대기중인거 처리
-		operateConnectWait();
+		size_t szRecvSize = 0;
+		BOOL returnValue = GetQueuedCompletionStatus(m_hCompletionPort, (LPDWORD)&szRecvSize, (PULONG_PTR)&iIndex, (LPOVERLAPPED*)&lpOV, _DEFAULT_TIME_OUT);
 
-		//특정 대상 패킷 처리
-		if(!m_qTargetSendQueue.empty())
-		{
-			//패킷 가져오기
-			std::deque<cPacketTCP*>	qTargetSendQueue;
-			{
-				mAMTX(m_mtxTargetSendMutex);
-				std::swap(qTargetSendQueue, m_qTargetSendQueue);
-			}
-
-			//순서대로 처리해준다
-			while(!qTargetSendQueue.empty())
-			{
-				cPacketTCP* pPacket = qTargetSendQueue.front();
-				qTargetSendQueue.pop_front();
-
-				std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.find(pPacket->m_Sock);
-
-				//패킷 대상이 누수방지를 위해 없으면 지워준다
-				if(iter == m_mapTCPSocket.end())
-					delete pPacket;
-				else
-					iter->second->pushSend(pPacket);
-			}
-		}
-
-		bool bIsNotHaveSend = false;
-		std::deque<cPacketTCP*>	qGlobalSendQueue;
-
-		//모든 대상 패킷 처리
-		if(!m_qGlobalSendQueue.empty())
-		{
-			mAMTX(m_mtxGlobalSendMutex);
-			std::swap(qGlobalSendQueue, m_qGlobalSendQueue);
-		}
-		else
-		{
-			bIsNotHaveSend = true;
-		}
-
-		std::deque<cPacketTCP*> qRecvQueue;
-		//패킷 송수신 처리
-		{
-			std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.begin();
-			for(; iter != m_mapTCPSocket.end(); ++iter)
-			{
-				cTCPSocket* lpTCPSocket = iter->second;
-
-				//도는중이 아니다
-				if(lpTCPSocket->getSocketStatus() != eTHREAD_STATUS_RUN)
-				{
-					listDeleteWait.push_back(lpTCPSocket);
-					qRemoveInMap.push_back(iter->first);
-					continue;
-				}
-
-				//패킷 꺼내놓고
-				{
-					lpTCPSocket->getRecvQueue(&qRecvQueue);
-				}
-
-				//전역송신 패킷 있으면 그거 보내주기
-				if(bIsNotHaveSend == false)
-				{
-					std::deque<cPacketTCP*> qSendQueue = qGlobalSendQueue;
-					lpTCPSocket->pushSend(&qSendQueue);
-				}
-			}
-		}
-
-		//수신큐로 옮김
-		{
-			mAMTX(m_mtxRecvMutex);
-			m_qRecvQueue.insert(m_qRecvQueue.end(), qRecvQueue.begin(), qRecvQueue.end());
-		}
-
-		//송신한 전역 패킷 지우기
-		while(!qGlobalSendQueue.empty())
-		{
-			cPacketTCP* qSendQueue = qGlobalSendQueue.front();
-			qGlobalSendQueue.pop_front();
-			delete qSendQueue;
-		}
-
-		//삭제하려는거 map에서 제거
-		if(!qRemoveInMap.empty())
-		{
-			mAMTX(m_mtxSocketMutex);
-			while(!qRemoveInMap.empty())
-			{
-				SOCKET Sock = qRemoveInMap.front();
-				qRemoveInMap.pop_front();
-
-				m_mapTCPSocket.erase(Sock);
-			}
-		}
-
-		//삭제목록에 있는거 처리
-		//이번타임이 아니여도 된다, 다음 루프일수도 있고 다다음 루프일수도 있고
-		{
-			std::list<cTCPSocket*>::iterator iter = listDeleteWait.begin();
-			while(iter != listDeleteWait.end())
-			{
-				cTCPSocket* pSocket = *iter;
-
-				//완전히 섰다
-				if(pSocket->getSocketStatus() == eTHREAD_STATUS_IDLE)
-				{
-					++iter;
-					KILL(pSocket);
-					continue;
-				}
-				++iter;
-			}
-		}
-
-		//설정된 틱만큼 재운다
-		std::chrono::duration<double> EndTime = std::chrono::system_clock::now() - StartTime;
-		std::chrono::milliseconds msEndTime = std::chrono::duration_cast<std::chrono::milliseconds>(EndTime);
-
-		if(m_iOperateTick < msEndTime.count())
+		//이쪽으로 오면 타임아웃인 경우?
+		if (iIndex == -1)
 			continue;
 
-		std::chrono::milliseconds msSleepTime(m_iOperateTick - msEndTime.count());
-		std::this_thread::sleep_for(msSleepTime);
+		cTCPClient* lpClient = getClient(iIndex);
+		if (lpClient == nullptr)
+			continue;
+
+		//송신처리
+		if (lpOV->IOState == 1)
+		{
+			//다음 패킷이 있으면 그거 전송 없으면 송신상태 종료
+			if (lpClient->pullNextPacket())
+				lpClient->sendPacket();
+			else
+				lpClient->setSendFinish();
+
+			continue;
+		}
+
+		//수신처리
+		if (lpOV->IOState == 0)
+		{
+			//연결종료되는 경우
+			if (returnValue == FALSE && szRecvSize == 0)
+			{
+				disconnectNow(lpClient->getSocket());
+				deleteClient(lpClient->getIndex());
+				continue;
+			}
+
+			//연결종료되는 경우
+			if (szRecvSize == 0)
+			{
+				disconnectNow(lpClient->getSocket());
+				deleteClient(lpClient->getIndex());
+				continue;
+			}
+
+			//수신큐로 옮김
+			{
+				IO_DATA* lpData = lpClient->getRecvOL();
+
+				//패킷이 뭉쳐서 온 경우가 있어서 자름
+				std::deque<cPacketTCP*> qSplitPacket;
+				size_t szSplitSize = 0;
+
+				//한번에 일정개수 이상 못보내게 처리
+				//만약 정말 많은패킷이 오고가는 게임이라면 스레드를 분리하거나 패킷을 묶어서 보내게 처리권장
+				for (int i = 0; i < _MAX_SEND_PACKET_ONCE; ++i)
+				{
+					stPacketBase* lpPacketInfo = reinterpret_cast<stPacketBase*>(lpData->Buffer + szSplitSize);
+
+					//이대로 읽으면 패킷 크기를 넘는다
+					if (szSplitSize + lpPacketInfo->m_iSize > szRecvSize)
+						break;
+
+					cPacketTCP* pRecvPacket = new cPacketTCP();
+					pRecvPacket->m_iIndex = lpClient->getIndex();
+					pRecvPacket->setData(lpPacketInfo->m_iSize, lpData->Buffer + szSplitSize, lpClient->getIndex());
+					szSplitSize += lpPacketInfo->m_iSize;
+					qSplitPacket.push_back(pRecvPacket);
+
+					//다읽었다 스탑
+					if (szSplitSize >= szRecvSize)
+						break;
+				}
+
+				mAMTX(m_mtxRecvMutex);
+				m_qRecvQueue.insert(m_qRecvQueue.end(), qSplitPacket.begin(), qSplitPacket.end());
+			}
+
+			//다시 수신상태로 바꿔줌
+			if (!lpClient->recvPacket())
+			{
+				deleteClient(lpClient->getIndex());
+				shutdown(lpClient->getSocket(), SD_SEND);
+				closesocket(lpClient->getSocket());
+				continue;
+			}
+		}
 	}
 
 	pKILL(pSendBuffer);
@@ -235,12 +310,14 @@ bool cTCPSocketServer::begin(const char* _csPort, int _iMode, int _iTick, int _i
 		return false;
 	}
 
+	m_iRunningMode = _iMode;
+
 	WSADATA wsaData;							//윈속 데이터
 	WORD wVersion = MAKEWORD(2, 2);				//버전
 	int iWSOK = WSAStartup(wVersion, &wsaData);	//소켓 시작
 	if(iWSOK != 0)
 	{
-		mLOG("Socket start error %lld", m_Sock);
+		mLOG("Socket start error %d", WSAGetLastError());
 		return false;
 	}
 
@@ -251,19 +328,15 @@ bool cTCPSocketServer::begin(const char* _csPort, int _iMode, int _iTick, int _i
 	//eWINSOCK_USE_BOTH = 3,	//둘다 사용
 	for(int i = 1; i < eWINSOCK_USE_BOTH; ++i)
 	{
-		if(!(_iMode & i))
+		if(!(m_iRunningMode & i))
 			continue;
 
 		//소켓 정보 셋팅
 		int iFamily = AF_INET;
-		SOCKET* lpSock = &m_Sock;
-		unSOCKADDR_IN* lpSockInfo = &m_SockInfo;
+		SOCKET* lpSock = &m_Socket[i - 1].m_Sock;
+		unSOCKADDR_IN* lpSockInfo = &m_Socket[i - 1].m_SockInfo;
 		if(i == eWINSOCK_USE_IPv6)
-		{
 			iFamily = AF_INET6;
-			lpSock = &m_SockIPv6;
-			lpSockInfo = &m_SockInfoIPv6;
-		}
 
 		addrinfo addrIn;
 		addrinfo* addrRes;
@@ -274,17 +347,21 @@ bool cTCPSocketServer::begin(const char* _csPort, int _iMode, int _iTick, int _i
 		addrIn.ai_flags = AI_PASSIVE;
 
 		getaddrinfo(nullptr, _csPort, &addrIn, &addrRes);
-		*lpSock = socket(addrRes->ai_family, addrRes->ai_socktype, addrRes->ai_protocol);
+
+		*lpSock = WSASocket(iFamily, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+//		*lpSock = socket(addrRes->ai_family, addrRes->ai_socktype, addrRes->ai_protocol);
+
 		memcpy(lpSockInfo, addrRes->ai_addr, sizeof(unSOCKADDR_IN));
 
 		freeaddrinfo(addrRes);
 
+		//소켓 생성 실패
 		if(*lpSock == INVALID_SOCKET)
 		{
 			mLOG("Socket error %s [%d]", _csPort, WSAGetLastError());
 			return false;
 		}
-
+		
 		//노딜레이 옵션, 0아닌게 반환되면 뭐가 문제가 있다
 		bool bUseNoDelay = _bUseNoDelay;
 		if(setsockopt(*lpSock, IPPROTO_TCP, TCP_NODELAY, (const char*)&bUseNoDelay, sizeof(bUseNoDelay)) != 0)
@@ -315,12 +392,16 @@ bool cTCPSocketServer::begin(const char* _csPort, int _iMode, int _iTick, int _i
 		}
 	}
 
+	m_vecClient.resize(m_iMaxConnectSocket);
+
+	m_hCompletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+
 	m_iStatus = eTHREAD_STATUS_RUN;
-	if(_iMode & eWINSOCK_USE_IPv4)
-		m_pConnectThread = new std::thread([&]() {connectThread(m_Sock); });
-	if(_iMode & eWINSOCK_USE_IPv6)
-		m_pConnectIPv6Thread = new std::thread([&]() {connectThread(m_SockIPv6); });
-	m_pOperateThread = new std::thread([&]() {operateThread(); });
+	if(m_iRunningMode & eWINSOCK_USE_IPv4)
+		m_Socket[eTCP_IPv4].m_pAcceptThread = new std::thread([&]() {acceptThread(m_Socket[eTCP_IPv4].m_Sock); });
+	if(m_iRunningMode & eWINSOCK_USE_IPv6)
+		m_Socket[eTCP_IPv6].m_pAcceptThread = new std::thread([&]() {acceptThread(m_Socket[eTCP_IPv6].m_Sock); });
+	m_pWorkThread = new std::thread([&]() {workThread(); });
 
 	return true;
 }
@@ -333,72 +414,43 @@ void cTCPSocketServer::stop()
 	|| m_iStatus == eTHREAD_STATUS_STOP)
 		return;
 
-	mLOG("Begin stop %lld", m_Sock);
+	mLOG("Begin stop");
 
 	//스레드 멈추게 변수 바꿔줌
 	m_iStatus = eTHREAD_STATUS_STOP;
 
-	//accept 소캣 중단
-	closesocket(m_Sock);
-
 	//스레드 정지 대기
-	m_pOperateThread->join();
-	m_pConnectThread->join();
-	m_pConnectIPv6Thread->join();
+	m_pWorkThread->join();
 
 	//변수 해제
-	KILL(m_pOperateThread);
-	KILL(m_pConnectThread);
-	KILL(m_pConnectIPv6Thread);
+	KILL(m_pWorkThread);
 
-	//연결 대기중인거 처리
-	operateConnectWait();
-
-	//연결중인거 정지
-	std::map<SOCKET, cTCPSocket*>::iterator iter = m_mapTCPSocket.begin();
-	for(; iter != m_mapTCPSocket.end(); ++iter)
+	//클라이언트 해제
+	for (int i = 0; i < m_vecClient.size(); ++i)
 	{
-		iter->second->stop();
+		if (m_vecClient[i] == nullptr)
+			continue;
+
+		if (m_vecClient[i]->isUse())
+			disconnectNow(m_vecClient[i]->getSocket());
+
+		delete m_vecClient[i];
+		m_vecClient[i] = nullptr;
 	}
 
-	//연결중인거 해제
-	//돌고있는 스레드가 없을때까지 계속 돌린다
-	iter = m_mapTCPSocket.begin();
-	while(!m_mapTCPSocket.empty())
+	//소켓 중단
+	for (int i = 1; i < eWINSOCK_USE_BOTH; ++i)
 	{
-		cTCPSocket* lpSocket = iter->second;
+		if (!(m_iRunningMode & i))
+			continue;
 
-		//완전히 서야 삭제해준다
-		//아니면 다시 올려보냄
-		if(lpSocket->getSocketStatus() == eTHREAD_STATUS_IDLE)
-		{
-			KILL(lpSocket);
-			std::map<SOCKET, cTCPSocket*>::iterator RemoveIter = iter++;
-			m_mapTCPSocket.erase(RemoveIter);
-		}
-		else
-		{
-			++iter;
-		}
+		stSocket* lpSocket = &m_Socket[i - 1];
 
-		if(iter == m_mapTCPSocket.end())
-			iter = m_mapTCPSocket.begin();
+		disconnectNow(lpSocket->m_Sock);
+		lpSocket->m_pAcceptThread->join();
+		KILL(lpSocket->m_pAcceptThread);
 	}
 
-	m_mapTCPSocket.clear();
-
-	while(!m_qGlobalSendQueue.empty())
-	{
-		cPacketTCP* pPacket = m_qGlobalSendQueue.front();
-		m_qGlobalSendQueue.pop_front();
-		delete pPacket;
-	}
-	while(!m_qTargetSendQueue.empty())
-	{
-		cPacketTCP* pPacket = m_qTargetSendQueue.front();
-		m_qTargetSendQueue.pop_front();
-		delete pPacket;
-	}
 	while(!m_qRecvQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qRecvQueue.front();
@@ -409,5 +461,5 @@ void cTCPSocketServer::stop()
 	//상태 재설정
 	m_iStatus = eTHREAD_STATUS_IDLE;
 
-	mLOG("Success stop %lld", m_Sock);
+	mLOG("Success stop");
 }

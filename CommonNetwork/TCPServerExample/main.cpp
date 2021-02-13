@@ -17,12 +17,32 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
+enum
+{
+	ePACKET_TYPE_MESSAGE,
+};
+
+#pragma pack(push, 1)
+//메세지 패킷
+struct stPacketMessage : stPacketBase
+{
+	char m_aText[512];
+
+	void resize()
+	{
+		m_iSize = static_cast<UINT32>(sizeof(stPacketBase) + strnlen_s(m_aText, sizeof(m_aText)) + 1);
+	}
+};
+#pragma pack(pop)
+
 cTCPSocketServer g_TCPServer;	//클라
 void recvThread();
 int main()
 {
 	std::string strNum;
 	std::cin >> strNum;
+
+	//6적으면 ipv6 4적으면 ipv4 다른거적으면 둘다
 	if(strcmp(strNum.c_str(), "6") == 0)
 		g_TCPServer.begin(_DEFAULT_PORT, eWINSOCK_USE_IPv6);
 	else if(strcmp(strNum.c_str(), "4") == 0)
@@ -58,10 +78,22 @@ void recvThread()
 		{
 			cPacketTCP* lpPacket = qRecvQueue.front();
 			qRecvQueue.pop_front();
+			stPacketBase* lpPacketInfo = reinterpret_cast<stPacketBase*>(lpPacket->m_pData);
 
-			printf("[RecvMessage]%lld : %s\n", lpPacket->m_Sock, lpPacket->m_pData);
+			//각 유형에 맞게 패킷 처리하는 부분
+			switch (lpPacketInfo->m_iType)
+			{
+			case ePACKET_TYPE_MESSAGE:
+			{
+				stPacketMessage* lpPacketData = reinterpret_cast<stPacketMessage*>(lpPacketInfo);
+				printf("[RecvMessage]%s\n", lpPacketData->m_aText);
 
-			g_TCPServer.sendAll(lpPacket->m_iSize, lpPacket->m_pData);
+				//클라이언트 핑퐁 테스트용
+				g_TCPServer.sendPacket(lpPacket->m_iIndex, lpPacket->m_iSize, lpPacket->m_pData);
+				break;
+			}
+			}
+
 			//반드시 처리한 뒤 패킷 delete
 			delete lpPacket;
 		}

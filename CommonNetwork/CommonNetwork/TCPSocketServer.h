@@ -18,50 +18,196 @@
 //연결종료
 //stop
 
+enum
+{
+	eTCP_IPv4 = 0,
+	eTCP_IPv6,
+	eTCP_TypeCount,
+};
+
+class cTCPClient
+{
+private:
+	bool	m_bIsUse;
+	int		m_iIndex;						//인덱스
+	SOCKET	m_Sock;							//소켓
+	unSOCKADDR_IN m_SockInfo;				//소켓 정보
+
+	std::mutex m_mtxSendMutex;				//송신 뮤텍스
+	std::deque<cPacketTCP*>	m_qSendQueue;	//송신 큐
+
+	IO_DATA	m_RecvOL;
+	IO_DATA	m_SendOL;
+
+	bool	m_bIsSending;
+
+public:
+	
+private:
+	void resetSendQueue()
+	{
+		mAMTX(m_mtxSendMutex);
+		while (!m_qSendQueue.empty())
+		{
+			cPacketTCP* pPacket = m_qSendQueue.front();
+			m_qSendQueue.pop_front();
+			delete pPacket;
+		}
+	}
+
+public:
+	cTCPClient()
+	{
+		m_bIsUse = false;
+		memset(&m_SockInfo, 0, sizeof(m_SockInfo));
+		memset(&m_RecvOL.OL, 0, sizeof(OVERLAPPED));
+		ZeroMemory(m_RecvOL.Buffer, sizeof(m_RecvOL.Buffer));
+		m_RecvOL.buf.buf = m_RecvOL.Buffer;
+		m_RecvOL.buf.len = _MAX_PACKET_SIZE;
+		m_RecvOL.IOState = 0;
+
+		memset(&m_SendOL.OL, 0, sizeof(OVERLAPPED));
+		ZeroMemory(m_SendOL.Buffer, sizeof(m_SendOL.Buffer));
+		m_SendOL.buf.buf = m_SendOL.Buffer;
+		m_SendOL.buf.len = _MAX_PACKET_SIZE;
+		m_SendOL.IOState = 1;
+
+		m_bIsSending = false;
+	}
+
+	~cTCPClient()
+	{
+		resetSendQueue();
+	}
+
+	void setIndex(int _iIndex)
+	{
+		m_iIndex = _iIndex;
+	}
+	int getIndex()
+	{
+		return m_iIndex;
+	}
+
+	//활성 상태로
+	void setUse()
+	{
+		resetSendQueue();
+		m_bIsUse = true;
+		m_bIsSending = false;
+	}
+
+	//비활성 상태로
+	void setNotUse()
+	{
+		resetSendQueue();
+		m_bIsUse = false;
+		m_bIsSending = false;
+	}
+	bool isUse()
+	{
+		return m_bIsUse;
+	}
+
+	void setSocket(SOCKET _Socket)
+	{
+		m_Sock = _Socket;
+	}
+	SOCKET getSocket()
+	{
+		return m_Sock;
+	}
+
+	void setInfo(unSOCKADDR_IN _SockInfo)
+	{
+		m_SockInfo = _SockInfo;
+	}
+	unSOCKADDR_IN getInfo()
+	{
+		return m_SockInfo;
+	}
+
+	IO_DATA* getRecvOL()
+	{
+		return &m_RecvOL;
+	}
+
+	IO_DATA* getSendOL()
+	{
+		return &m_SendOL;
+	}
+
+	bool recvPacket();	//수신
+	bool sendPacket();	//송신
+
+	//다음 패킷을 송신할 수 있게 가져옴
+	bool pullNextPacket();
+
+	/// <summary>
+	/// 송신 할 패킷 추가
+	/// </summary>
+	void addSendPacket(int _iSize, const char* _lpData);
+
+	/// <summary>
+	/// 송신상태 종료
+	/// </summary>
+	void setSendFinish()
+	{
+		m_bIsSending = false;
+	}
+};
+
 class cTCPSocketServer
 {
 private:
-	std::mutex m_mtxGlobalSendMutex;			//송신 뮤텍스(전체)
-	std::mutex m_mtxTargetSendMutex;			//송신 뮤텍스(전체)
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
-	std::mutex m_mtxConnectionMutex;			//연결 대기 뮤텍스
-	std::mutex m_mtxSocketMutex;				//연결 뮤텍스
+	std::mutex m_mtxClientMutex;				//연결 뮤텍스
 	std::mutex m_mtxBWListMutex;				//블랙/화이트 리스트 뮤텍스
 
-	std::deque<cPacketTCP*>	m_qGlobalSendQueue;	//전역 송신 큐
-	std::deque<cPacketTCP*>	m_qTargetSendQueue;	//대상 송신 큐
 	std::deque<cPacketTCP*>	m_qRecvQueue;		//수신 큐
 
-	std::thread* m_pConnectThread;				//연결 대기 스레드
-	std::thread* m_pConnectIPv6Thread;			//연결 대기 스레드
-	std::thread* m_pOperateThread;				//처리 스레드(패킷수신, 전역송신)
+	std::thread* m_pWorkThread;					//처리 스레드(송신, 수신)
 
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
 	int		m_iOperateTick;						//처리 간격
-	SOCKET	m_Sock;								//소켓
-	unSOCKADDR_IN m_SockInfo;					//소켓 정보
 
-	SOCKET	m_SockIPv6;							//소켓(IPv6)
-	unSOCKADDR_IN m_SockInfoIPv6;				//소켓 정보(IPv6)
+	int		m_iMaxConnectSocket;				//최대 연결 가능한 소켓 수
+	int		m_iConnectedSocketCount;			//이미 연결 된 소켓 수
+	std::vector<cTCPClient*> m_vecClient;		//연결 되 있는 클라이언트
 
-	std::map<SOCKET, cTCPSocket*> m_mapTCPSocket;//연결되있는 TCP 소켓들, 특정 대상 패킷처리 원활하게 인덱스로 잡혀있음
-	std::deque<cTCPSocket*> m_qConnectWait;		//연결 대기 큐
+	int		m_iLastConnectIndex;				//마지막 연결 인덱스
+	std::deque<int> m_qDisconnectedIndex;		//반환된 마지막 연결 인덱스
+
+	struct stSocket
+	{
+		SOCKET	m_Sock;							//소켓
+		unSOCKADDR_IN m_SockInfo;				//소켓 정보
+		std::thread* m_pAcceptThread;			//연결 스레드
+	}m_Socket[eTCP_TypeCount];
+
+	HANDLE	m_hCompletionPort;					//iocp처리포트
 
 	bool	m_bIsBlackList;						//블랙 리스트가 아니면 화이트 리스트
 	std::set<std::string> m_setBWList;			//블랙, 화이트 리스트
 
+	int m_iRunningMode;							//동작 모드
+
 public:
 	cTCPSocketServer()//생성자
 	{
-		m_pConnectThread = nullptr;	//연결 대기 스레드
-		m_pConnectIPv6Thread = nullptr; //ipv6 대기 스레드
-		m_pOperateThread = nullptr;	//수신 스레드
+		m_iRunningMode = 0;
+		m_pWorkThread = nullptr;	//수신 스레드
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
-		m_Sock = INVALID_SOCKET;
-		m_SockIPv6 = INVALID_SOCKET;
 		m_bIsBlackList = false;
-		ZeroMemory(&m_SockInfo, sizeof(m_SockInfo));
-		ZeroMemory(&m_SockInfoIPv6, sizeof(m_SockInfoIPv6));
+		m_iMaxConnectSocket = _MAX_TCP_CLIENT_COUNT;	//최대 연결 가능한 소켓 수
+		m_iConnectedSocketCount = 0;					//현재 연결되어있는 소켓 수
+
+		for (int i = 0; i < eTCP_TypeCount; ++i)
+		{
+			m_Socket[i].m_Sock = INVALID_SOCKET;
+			m_Socket[i].m_pAcceptThread = nullptr;	//연결 대기 스레드
+			ZeroMemory(&m_Socket[i].m_SockInfo, sizeof(m_Socket[i].m_SockInfo));
+		}
 	};
 
 	~cTCPSocketServer()//소멸자
@@ -73,33 +219,19 @@ private:
 	/// <summary>
 	/// 연결 수립 스레드
 	/// </summary>
-	void connectThread(SOCKET _Socket);
+	/// <param name="_Socket">대상 소켓</param>
+	void acceptThread(SOCKET _Socket);
 
 	/// <summary>
 	/// 처리 스레드
 	/// 패킷 가져오고 전역패킷 보내고 처리
 	/// </summary>
-	void operateThread();
+	void workThread();
 
-	inline void operateConnectWait()
+	void disconnectNow(SOCKET _Socket)
 	{
-		//연결 대기중인거 다 밀어넣기
-		if(!m_qConnectWait.empty())
-		{
-			std::deque<cTCPSocket*> qConnectWait;
-			{
-				mAMTX(m_mtxConnectionMutex);
-				std::swap(m_qConnectWait, qConnectWait);
-			}
-
-			mAMTX(m_mtxSocketMutex);
-			while(!qConnectWait.empty())
-			{
-				cTCPSocket* lpSocket = qConnectWait.front();
-				qConnectWait.pop_front();
-				m_mapTCPSocket.insert(std::pair<SOCKET, cTCPSocket*>(lpSocket->getSocket(), lpSocket));
-			}
-		}
+		shutdown(_Socket, SD_SEND);
+		closesocket(_Socket);
 	}
 
 public:
@@ -117,6 +249,87 @@ public:
 	/// 스레드 정지
 	/// </summary>
 	void stop();
+	
+	/// <summary>
+	/// 신규 클라이언트 추가, 포인터 반환
+	/// </summary>
+	/// <returns>클라이언트 포인터</returns>
+	cTCPClient* addNewClient()
+	{
+		//정원초과
+		if (m_iConnectedSocketCount >= m_iMaxConnectSocket)
+			return nullptr;
+
+		mAMTX(m_mtxClientMutex);
+
+		//사용자가 나가서 반환된 인덱스 재사용
+		int iIndex = m_iLastConnectIndex;
+		if (!m_qDisconnectedIndex.empty())
+		{
+			iIndex = m_qDisconnectedIndex.front();
+			m_qDisconnectedIndex.pop_front();
+		}
+		else
+		{
+			++m_iLastConnectIndex;
+		}
+
+		++m_iConnectedSocketCount;
+
+		//해당 인덱스에 할당되있는게 없으면 할당
+		if(m_vecClient[iIndex] == nullptr)
+		{
+			cTCPClient* pNewClient = new cTCPClient();
+			pNewClient->setIndex(iIndex);
+			m_vecClient[iIndex] = pNewClient;
+		}
+
+		if (m_vecClient[iIndex]->isUse())
+			return nullptr;
+
+		m_vecClient[iIndex]->setUse();
+		return m_vecClient[iIndex];
+	}
+
+	/// <summary>
+	/// 해당 인덱스의 클라이언트 삭제
+	/// </summary>
+	void deleteClient(int _iIndex)
+	{
+		if (_iIndex >= m_iMaxConnectSocket)
+			return;
+
+		mAMTX(m_mtxClientMutex);
+		--m_iConnectedSocketCount;
+		m_vecClient[_iIndex]->setNotUse();
+		m_qDisconnectedIndex.push_back(_iIndex);
+	}
+
+	/// <summary>
+	/// 클라이언트 받아오기
+	/// </summary>
+	/// <param name="_iIndex">클라이언트 인덱스</param>
+	/// <returns>클라이언트 포인터</returns>
+	cTCPClient* getClient(int _iIndex)
+	{
+		if (_iIndex >= m_iMaxConnectSocket)
+			return nullptr;
+
+		if (m_vecClient[_iIndex] == nullptr)
+			return nullptr;
+		if (m_vecClient[_iIndex]->getSocket() == INVALID_SOCKET
+		|| !m_vecClient[_iIndex]->isUse())
+			return nullptr;
+		return m_vecClient[_iIndex];
+	}
+
+	/// <summary>
+	/// 최대 연결 가능한 클라이언트 수 설정
+	/// </summary>
+	void setMaxClientCount(int _iCount)
+	{
+		m_iMaxConnectSocket = _iCount;
+	}
 
 	/// <summary>
 	/// 소켓 상태 받아오는 함수, -1 정지요청, 0 정지, 1 돌아가는중
@@ -131,38 +344,25 @@ public:
 	/// 소켓 정보 받아오는거
 	/// </summary>
 	/// <returns>m_SockInfo</returns>
-	inline unSOCKADDR_IN getSockinfo()
+	inline unSOCKADDR_IN getSockinfo(int _iSockType)
 	{
-		return m_SockInfo;
+		return m_Socket[_iSockType].m_SockInfo;
 	}
 
 	/// <summary>
-	/// 송신큐에 패킷 추가
+	/// 패킷 송신
 	/// </summary>
-	/// <param name="_lpAddrInfo">수신 또는 송신받을 대상</param>
+	/// <param name="_Socket">대상</param>
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
-	inline void sendAll(int _iSize, char* _lpData)
+	inline void sendPacket(int _iIndex, int _iSize, char* _lpData)
 	{
-		cPacketTCP* pPacket = new cPacketTCP();
-		pPacket->setData(_iSize, _lpData);
-		mAMTX(m_mtxGlobalSendMutex);
-		m_qGlobalSendQueue.push_back(pPacket);
-	}
+		mAMTX(m_mtxClientMutex);
+		cTCPClient* lpClient = getClient(_iIndex);
+		if (!lpClient)
+			return;
 
-	/// <summary>
-	/// 특정 대상에게 송신하는 패킷
-	/// </summary>
-	/// <param name="_Socket">대상 소캣</param>
-	/// <param name="_iSize">데이터 크기</param>
-	/// <param name="_lpData">데이터</param>
-	/// <returns></returns>
-	inline void sendTarget(SOCKET _Socket, int _iSize, char* _lpData)
-	{
-		cPacketTCP* pPacket = new cPacketTCP();
-		pPacket->setData(_iSize, _lpData, _Socket);
-		mAMTX(m_mtxTargetSendMutex);
-		m_qTargetSendQueue.push_back(pPacket);
+		lpClient->addSendPacket(_iSize, _lpData);
 	}
 
 	/// <summary>

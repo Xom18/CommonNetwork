@@ -16,7 +16,6 @@
 class cTCPSocket
 {
 private:
-	int*	m_lpMasterStatus;					//서버에서 지정하는 상태
 	int		m_iStatus;							//상태 -1정지요청, 0정지, 1돌아가는중
 	SOCKET	m_Sock;								//소켓
 	unSOCKADDR_IN m_SockInfo;					//소켓 정보
@@ -36,7 +35,6 @@ public:
 		m_pRecvThread = nullptr;	//수신 스레드
 		m_pSendThread = nullptr;	//송신 스레드
 		m_pStoppingThread = nullptr;//중단 스레드
-		m_lpMasterStatus = nullptr;	//서버 상태
 
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
 		m_Sock = INVALID_SOCKET;
@@ -142,8 +140,11 @@ public:
 	/// <param name="_lpAddrInfo">수신 또는 송신받을 대상</param>
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
-	inline void pushSend(int _iSize, char* _lpData)
+	inline void pushSend(int _iSize, const char* _lpData)
 	{
+		if (m_iStatus != eTHREAD_STATUS_RUN)
+			return;
+
 		cPacketTCP* pPacket = new cPacketTCP();
 		pPacket->setData(_iSize, _lpData);
 		{
@@ -162,27 +163,6 @@ public:
 		{
 			mAMTX(m_mtxSendMutex);
 			m_qSendQueue.push_back(_pPacket);
-		}
-		m_cvWaiter.notify_all();
-	}
-
-	/// <summary>
-	/// 전역송신 할 때 사용하는 큐에있는 패킷 일괄 처리
-	/// </summary>
-	/// <param name="_pPacket">동적할당 되있는 패킷</param>
-	inline void pushSend(std::deque<cPacketTCP*>* _lpPacketQueue)
-	{
-		{
-			mAMTX(m_mtxSendMutex);
-			while(!_lpPacketQueue->empty())
-			{
-				//패킷을 그대로 복사해서 추가
-				cPacketTCP* pFrontPacket = _lpPacketQueue->front();
-				_lpPacketQueue->pop_front();
-				cPacketTCP* pPacket = new cPacketTCP();
-				pPacket->setData(pFrontPacket->m_iSize, pFrontPacket->m_pData, m_Sock);
-				m_qSendQueue.push_back(pPacket);
-			}
 		}
 		m_cvWaiter.notify_all();
 	}

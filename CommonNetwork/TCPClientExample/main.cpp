@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 #include "CommonNetwork.h"
 
 #ifdef _WIN64
@@ -17,14 +18,35 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
+enum
+{
+	ePACKET_TYPE_MESSAGE,
+};
+
+#pragma pack(push, 1)
+//메세지 패킷
+struct stPacketMessage : stPacketBase
+{
+	char m_aText[512];
+
+	void resize()
+	{
+		m_iSize = static_cast<UINT32>(sizeof(stPacketBase) + strnlen_s(m_aText, sizeof(m_aText)) + 1);
+	}
+};
+#pragma pack(pop)
+
 cTCPSocket g_TCPClient;	//클라
 void recvThread(cTCPSocket* _lpClient);
 int main()
 {
 	std::string strIP;
 	std::cin >> strIP;
+	char csText[512];
+	memcpy(csText, strIP.c_str(), strIP.size());
 
-	g_TCPClient.tryConnectServer((char*)strIP.c_str());
+
+	g_TCPClient.tryConnectServer(strIP.c_str());
 	std::thread RecvThread = std::thread([&]() {recvThread(&g_TCPClient); });
 
 	while(true)
@@ -39,7 +61,13 @@ int main()
 			break;
 		}
 
-		g_TCPClient.pushSend(strText.length() + 1, (char*)strText.c_str());
+		//패킷 유형 정의, 데이터적용, 전송
+		stPacketMessage MessagePacket;
+		MessagePacket.setInfo(ePACKET_TYPE_MESSAGE, sizeof(MessagePacket));
+		strcpy_s(MessagePacket.m_aText, strText.c_str());
+		MessagePacket.resize();
+
+		g_TCPClient.pushSend(MessagePacket.m_iSize, (char*)&MessagePacket);
 	}
 
 	RecvThread.join();
@@ -56,8 +84,19 @@ void recvThread(cTCPSocket* _lpClient)
 		{
 			cPacketTCP* lpPacket = qRecvQueue.front();
 			qRecvQueue.pop_front();
+			stPacketBase* lpPacketInfo = reinterpret_cast<stPacketBase*>(lpPacket->m_pData);
 
-			printf("[Client]%lld : %s\n", lpPacket->m_Sock, lpPacket->m_pData);
+			//각 유형에 맞게 패킷 처리하는 부분
+			switch (lpPacketInfo->m_iType)
+			{
+			case ePACKET_TYPE_MESSAGE:
+			{
+				stPacketMessage* lpPacketData = reinterpret_cast<stPacketMessage*>(lpPacketInfo);
+				printf("[RecvMessage]%s\n", lpPacketData->m_aText);
+
+				break;
+			}
+			}
 
 			//반드시 처리한 뒤 패킷 delete
 			delete lpPacket;

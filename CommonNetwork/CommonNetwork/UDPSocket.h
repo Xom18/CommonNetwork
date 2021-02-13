@@ -124,7 +124,7 @@ public:
 	/// <param name="_lpAddrInfo">수신 또는 송신받을 대상</param>
 	/// <param name="_iSize">데이터 크기</param>
 	/// <param name="_lpData">데이터</param>
-	inline void pushSend(int _iSize, char* _lpData, unSOCKADDR_IN* _lpAddrInfo = nullptr)
+	inline void pushSend(int _iSize, const char* _lpData, unSOCKADDR_IN* _lpAddrInfo = nullptr)
 	{
 		//UDP는 패킷 크기가 커질수록 도착할 확률이 낮아져서 일부러 작게함
 		if (_iSize >= _MAX_UDP_DATA_SIZE)

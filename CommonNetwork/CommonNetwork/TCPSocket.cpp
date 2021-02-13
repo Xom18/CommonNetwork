@@ -12,26 +12,28 @@
 
 void cTCPSocket::recvThread()
 {
-	mLOG("Begin recvThread %lld", m_Sock);
+	mLOG("Begin recvThread");
 
 	char* pRecvBuffer = new char[_MAX_PACKET_SIZE];	//데이터 버퍼
 	int ClientAddrLength = sizeof(sockaddr_in);
 
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
-		//강제정지
-		if(m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN)
-			break;
-
 		//데이터 수신
 		int iDataLength = recv(m_Sock, pRecvBuffer, _MAX_PACKET_SIZE, 0);
+
+		if (iDataLength == 0)
+		{
+			stop();
+			continue;
+		}
 
 		if(iDataLength == SOCKET_ERROR)
 			continue;
 
 		//받은 데이터 처리
 		cPacketTCP* pPacket = new cPacketTCP();
-		pPacket->setData(iDataLength, pRecvBuffer, getSocket());
+		pPacket->setData(iDataLength, pRecvBuffer);
 
 		//큐에 넣는다
 		pushRecvQueue(pPacket);
@@ -39,31 +41,27 @@ void cTCPSocket::recvThread()
 
 	pKILL(pRecvBuffer);
 
-	mLOG("End recvThread %lld", m_Sock);
+	mLOG("End recvThread");
 }
 
 void cTCPSocket::sendThread()//송신 스레드
 {
-	mLOG("Begin sendThread %lld", m_Sock);
+	mLOG("Begin sendThread");
 
 	char* pSendBuffer = new char[_MAX_PACKET_SIZE];	//송신할 패킷 버퍼
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
-		//강제정지
-		if(m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN)
-			break;
-
 		//송신 큐가 비어있다, 재워준다
 		if(m_qSendQueue.empty())
 		{
 			std::mutex mtxWaiter;
 			std::unique_lock<std::mutex> lkWaiter(mtxWaiter);
 			m_cvWaiter.wait(lkWaiter, [&] {
-				return !m_qSendQueue.empty() || m_iStatus != eTHREAD_STATUS_RUN || (m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN);
+				return !m_qSendQueue.empty() || m_iStatus != eTHREAD_STATUS_RUN;
 			});
 			lkWaiter.unlock();
 
-			if(m_iStatus != eTHREAD_STATUS_RUN || (m_lpMasterStatus != nullptr && *m_lpMasterStatus != eTHREAD_STATUS_RUN))
+			if(m_iStatus != eTHREAD_STATUS_RUN)
 				break;
 		}
 
@@ -103,7 +101,7 @@ void cTCPSocket::sendThread()//송신 스레드
 	}
 
 	pKILL(pSendBuffer);
-	mLOG("End sendThread %lld", m_Sock);
+	mLOG("End sendThread");
 }
 
 //스레드 시작
@@ -134,6 +132,11 @@ bool cTCPSocket::tryConnectServer(const char* _csIP, const char* _csPort, int _i
 	addrIn.ai_flags = AI_PASSIVE;
 
 	getaddrinfo(_csIP, _csPort, &addrIn, &addrRes);
+	if (addrRes == nullptr)
+	{
+		mLOG("Socket start error %d", WSAGetLastError());
+		return false;
+	}
 	m_Sock = socket(addrRes->ai_family, addrRes->ai_socktype, addrRes->ai_protocol);
 	memcpy(&m_SockInfo, addrRes->ai_addr, sizeof(m_SockInfo));
 
@@ -158,10 +161,10 @@ bool cTCPSocket::tryConnectServer(const char* _csIP, const char* _csPort, int _i
 	int iErrorCoded = connect(m_Sock, (sockaddr*)&m_SockInfo, sizeof(m_SockInfo));
 	if(iErrorCoded != 0)
 	{
-		mLOG("Connect error %lld, %d", m_Sock, WSAGetLastError());
+		mLOG("Connect error, %d", WSAGetLastError());
 		return false;
 	}
-	mLOG("Connect success %lld", m_Sock);
+	mLOG("Connect success");
 
 	//연결 성공했으니 스레드 시작
 	begin();
@@ -209,6 +212,9 @@ void cTCPSocket::stopThread()
 	m_pSendThread->join();
 	m_pRecvThread->join();
 
+	shutdown(m_Sock, SD_SEND);
+	closesocket(m_Sock);
+
 	//변수 해제
 	KILL(m_pSendThread);
 	KILL(m_pRecvThread);
@@ -217,13 +223,13 @@ void cTCPSocket::stopThread()
 	{
 		cPacketTCP* pPacket = m_qSendQueue.front();
 		m_qSendQueue.pop_front();
-		KILL(pPacket);
+		delete pPacket;
 	}
 	while(!m_qRecvQueue.empty())
 	{
 		cPacketTCP* pPacket = m_qRecvQueue.front();
 		m_qRecvQueue.pop_front();
-		KILL(pPacket);
+		delete pPacket;
 	}
 
 	//상태 재설정
