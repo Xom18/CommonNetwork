@@ -151,13 +151,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="TCPClient.cpp" />
     <ClCompile Include="TCPSocket.cpp" />
     <ClCompile Include="TCPSocketServer.cpp" />
     <ClCompile Include="UDPSocket.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AutoMutex.h" />
     <ClInclude Include="CommonNetwork.h" />
+    <ClInclude Include="TCPClient.h" />
     <ClInclude Include="Debug.h" />
     <ClInclude Include="Define.h" />
     <ClInclude Include="Macro.h" />

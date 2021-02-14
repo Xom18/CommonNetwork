@@ -9,88 +9,8 @@
 #include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
-#include "AutoMutex.h"
 #include "Packet.h"
 #include "TCPSocketServer.h"
-
-bool cTCPClient::recvPacket()
-{
-	DWORD	dwRecv;
-	DWORD	Flags = 0;
-	if (WSARecv(m_Sock, &m_RecvOL.buf, 1, &dwRecv, &Flags, &m_RecvOL.OL, NULL) == SOCKET_ERROR)
-	{
-		DWORD dwError = WSAGetLastError();
-
-		if (dwError != WSA_IO_PENDING && dwError != ERROR_SUCCESS)
-			return false;
-	}
-
-	return true;
-}
-
-//전송 대기중인 다음 패킷 가져오는거
-bool cTCPClient::pullNextPacket()
-{
-	cPacketTCP* pPacket = nullptr;
-	
-	{
-		mAMTX(m_mtxSendMutex);
-		if (m_qSendQueue.empty())
-			return false;
-
-		pPacket = m_qSendQueue.front();
-		m_qSendQueue.pop_front();
-	}
-	m_SendOL.sendlen = pPacket->m_iSize;
-	memcpy(m_SendOL.Buffer, pPacket->m_pData, pPacket->m_iSize);
-	delete pPacket;
-
-	return true;
-}
-void cTCPClient::addSendPacket(int _iSize, const char* _lpData)
-{
-	//사용중이지 않음
-	if (!m_bIsUse)
-		return;
-
-	//현재 송신중이면 큐에 넣어놓고
-	if (m_bIsSending)
-	{
-		cPacketTCP* pNewPacket = new cPacketTCP();
-		pNewPacket->setData(_iSize, _lpData);
-
-		mAMTX(m_mtxSendMutex);
-		m_qSendQueue.push_back(pNewPacket);
-	}
-	else
-	{//송신중이 아니면 바로 전송시도
-		memcpy(m_SendOL.Buffer, _lpData, _iSize);
-		m_SendOL.sendlen = _iSize;
-		sendPacket();
-	}
-}
-
-bool cTCPClient::sendPacket()
-{
-	//사용중이지 않음
-	if (!m_bIsUse)
-		return false;
-
-	//전송상태 true로 전환
-	m_bIsSending = true;
-
-	DWORD	dwSend;
-
-	if (WSASend(m_Sock, &m_SendOL.buf, 1, &dwSend, 0, &m_SendOL.OL, NULL) == SOCKET_ERROR)
-	{
-		DWORD dwError = WSAGetLastError();
-
-		if (dwError != WSA_IO_PENDING && dwError != ERROR_SUCCESS)
-			return false;
-	}
-
-	return true;
-}
 
 void cTCPSocketServer::acceptThread(SOCKET _Socket)
 {
@@ -107,8 +27,11 @@ void cTCPSocketServer::acceptThread(SOCKET _Socket)
 		if(Socket == INVALID_SOCKET)
 			continue;
 
-		//리스트에 내용이 있을때만 동작
-		if(!m_setBWList.empty())
+		//만약 게임서버같은거 만든다고 치면 비정상적인 접근 방지를 위해 화이트 리스트 사용 권장
+		//로그인서버 인증->게임서버 화이트리스트 추가 하는 식으로
+
+		//블랙리스트는 리스트에 내용이 있을때만 동작, 화이트 리스트는 없어도 동작
+		if(!m_setBWList.empty() || !m_bIsBlackList)
 		{
 			char csClientIP[_IP_LENGTH];
 			if(Client.IPv4.sin_family == AF_INET)
@@ -121,7 +44,7 @@ void cTCPSocketServer::acceptThread(SOCKET _Socket)
 			//찾았는지 여부
 			bool bIsFound = false;
 			{
-				mAMTX(m_mtxBWListMutex);
+				mLG(m_mtxBWListMutex);
 				bIsFound = m_setBWList.find(strIP) != m_setBWList.end();
 			}
 			//킥 여부
@@ -165,14 +88,17 @@ void cTCPSocketServer::acceptThread(SOCKET _Socket)
 			continue;
 		}
 
-		//새 클라이언트 생성
+		//클라이언트 할당
 		cTCPClient* lpClient = addNewClient();
 		if (lpClient == nullptr)
 		{
 			disconnectNow(Socket);
 			continue;
 		}
+
+		//소켓과 소켓정보 설정
 		lpClient->setSocket(Socket);
+		lpClient->setInfo(Client);
 
 		//IOCP 잡아줌
 		if (!CreateIoCompletionPort((HANDLE)Socket, m_hCompletionPort, (ULONG_PTR)lpClient->getIndex(), 0))
@@ -218,6 +144,7 @@ void cTCPSocketServer::workThread()
 		if (iIndex == -1)
 			continue;
 
+		//여기서 연결 끊는걸 관리하기 때문에 mutex 안잡고 그냥씀
 		cTCPClient* lpClient = getClient(iIndex);
 		if (lpClient == nullptr)
 			continue;
@@ -282,7 +209,8 @@ void cTCPSocketServer::workThread()
 						break;
 				}
 
-				mAMTX(m_mtxRecvMutex);
+				//만약 패킷이 처리 가능한 수 보다 많이 몰리면 이쪽에 서버에서 갖고있을 수 있는 최대 패킷 수 같은걸 제한하자
+				mLG(m_mtxRecvMutex);
 				m_qRecvQueue.insert(m_qRecvQueue.end(), qSplitPacket.begin(), qSplitPacket.end());
 			}
 

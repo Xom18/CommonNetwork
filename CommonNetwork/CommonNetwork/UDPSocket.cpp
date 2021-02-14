@@ -6,7 +6,6 @@
 #include "Debug.h"
 #include "Macro.h"
 #include "Define.h"
-#include "AutoMutex.h"
 #include "Packet.h"
 #include "UDPSocket.h"
 
@@ -66,7 +65,7 @@ void cUDPSocket::sendThread(bool _bIsServer)//송신 스레드
 		//큐에 있는걸 가져온다
 		std::deque<cPacketUDP*>	qSendQueue;
 		{
-			mAMTX(m_mtxSendMutex);
+			mLG(m_mtxSendMutex);
 			std::swap(qSendQueue, m_qSendQueue);
 		}
 

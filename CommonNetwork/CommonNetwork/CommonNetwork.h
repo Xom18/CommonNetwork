@@ -11,7 +11,6 @@
 #include "Debug.h"
 #include "Define.h"
 #include "Macro.h"
-#include "AutoMutex.h"
 #include "Packet.h"
 #include "UDPSocket.h"
 #include "TCPSocket.h"

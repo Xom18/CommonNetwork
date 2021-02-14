@@ -35,11 +35,11 @@
     <ClCompile Include="TCPSocket.cpp">
       <Filter>소스 파일\TCPSocket\Client</Filter>
     </ClCompile>
+    <ClCompile Include="TCPClient.cpp">
+      <Filter>소스 파일\TCPSocket\Server</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AutoMutex.h">
-      <Filter>소스 파일\Common</Filter>
-    </ClInclude>
     <ClInclude Include="Packet.h">
       <Filter>소스 파일\Common</Filter>
     </ClInclude>
@@ -63,6 +63,9 @@
     </ClInclude>
     <ClInclude Include="CommonNetwork.h">
       <Filter>소스 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="TCPClient.h">
+      <Filter>소스 파일\TCPSocket\Server</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

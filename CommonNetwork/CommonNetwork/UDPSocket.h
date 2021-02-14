@@ -71,7 +71,7 @@ private:
 	/// <param name="_lpPacket">수신받은 패킷</param>
 	inline void pushRecvQueue(cPacketUDP* _lpPacket)
 	{
-		mAMTX(m_mtxRecvMutex);
+		mLG(m_mtxRecvMutex);
 		m_qRecvQueue.push_back(_lpPacket);
 	}
 
@@ -136,7 +136,7 @@ public:
 		cPacketUDP* pPacket = new cPacketUDP();
 		pPacket->setData(_iSize, _lpData, _lpAddrInfo);
 		{
-			mAMTX(m_mtxSendMutex);
+			mLG(m_mtxSendMutex);
 			m_qSendQueue.push_back(pPacket);
 		}
 		m_cvWaiter.notify_all();
@@ -152,7 +152,7 @@ public:
 		if(m_qRecvQueue.empty())
 			return false;
 
-		mAMTX(m_mtxRecvMutex);
+		mLG(m_mtxRecvMutex);
 		_lpQueue->insert(_lpQueue->end(), m_qRecvQueue.begin(), m_qRecvQueue.end());
 
 		if(_bFlush)
@@ -170,7 +170,7 @@ public:
 		if(m_qRecvQueue.empty())
 			return false;
 
-		mAMTX(m_mtxRecvMutex);
+		mLG(m_mtxRecvMutex);
 		std::swap(m_qRecvQueue, *_lpQueue);
 		return true;
 	}

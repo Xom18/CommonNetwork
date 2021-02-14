@@ -1,4 +1,6 @@
 #pragma once
+
+#include "TCPClient.h"
 //TCP 통신 서버 처리 하는곳
 //TCP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
 
@@ -23,138 +25,6 @@ enum
 	eTCP_IPv4 = 0,
 	eTCP_IPv6,
 	eTCP_TypeCount,
-};
-
-class cTCPClient
-{
-private:
-	bool	m_bIsUse;
-	int		m_iIndex;						//인덱스
-	SOCKET	m_Sock;							//소켓
-	unSOCKADDR_IN m_SockInfo;				//소켓 정보
-
-	std::mutex m_mtxSendMutex;				//송신 뮤텍스
-	std::deque<cPacketTCP*>	m_qSendQueue;	//송신 큐
-
-	IO_DATA	m_RecvOL;
-	IO_DATA	m_SendOL;
-
-	bool	m_bIsSending;
-
-public:
-	
-private:
-	void resetSendQueue()
-	{
-		mAMTX(m_mtxSendMutex);
-		while (!m_qSendQueue.empty())
-		{
-			cPacketTCP* pPacket = m_qSendQueue.front();
-			m_qSendQueue.pop_front();
-			delete pPacket;
-		}
-	}
-
-public:
-	cTCPClient()
-	{
-		m_bIsUse = false;
-		memset(&m_SockInfo, 0, sizeof(m_SockInfo));
-		memset(&m_RecvOL.OL, 0, sizeof(OVERLAPPED));
-		ZeroMemory(m_RecvOL.Buffer, sizeof(m_RecvOL.Buffer));
-		m_RecvOL.buf.buf = m_RecvOL.Buffer;
-		m_RecvOL.buf.len = _MAX_PACKET_SIZE;
-		m_RecvOL.IOState = 0;
-
-		memset(&m_SendOL.OL, 0, sizeof(OVERLAPPED));
-		ZeroMemory(m_SendOL.Buffer, sizeof(m_SendOL.Buffer));
-		m_SendOL.buf.buf = m_SendOL.Buffer;
-		m_SendOL.buf.len = _MAX_PACKET_SIZE;
-		m_SendOL.IOState = 1;
-
-		m_bIsSending = false;
-	}
-
-	~cTCPClient()
-	{
-		resetSendQueue();
-	}
-
-	void setIndex(int _iIndex)
-	{
-		m_iIndex = _iIndex;
-	}
-	int getIndex()
-	{
-		return m_iIndex;
-	}
-
-	//활성 상태로
-	void setUse()
-	{
-		resetSendQueue();
-		m_bIsUse = true;
-		m_bIsSending = false;
-	}
-
-	//비활성 상태로
-	void setNotUse()
-	{
-		resetSendQueue();
-		m_bIsUse = false;
-		m_bIsSending = false;
-	}
-	bool isUse()
-	{
-		return m_bIsUse;
-	}
-
-	void setSocket(SOCKET _Socket)
-	{
-		m_Sock = _Socket;
-	}
-	SOCKET getSocket()
-	{
-		return m_Sock;
-	}
-
-	void setInfo(unSOCKADDR_IN _SockInfo)
-	{
-		m_SockInfo = _SockInfo;
-	}
-	unSOCKADDR_IN getInfo()
-	{
-		return m_SockInfo;
-	}
-
-	IO_DATA* getRecvOL()
-	{
-		return &m_RecvOL;
-	}
-
-	IO_DATA* getSendOL()
-	{
-		return &m_SendOL;
-	}
-
-	bool recvPacket();	//수신
-	bool sendPacket();	//송신
-
-	//다음 패킷을 송신할 수 있게 가져옴
-	bool pullNextPacket();
-
-	/// <summary>
-	/// 송신 할 패킷 추가
-	/// </summary>
-	void addSendPacket(int _iSize, const char* _lpData);
-
-	/// <summary>
-	/// 송신상태 종료
-	/// </summary>
-	void setSendFinish()
-	{
-		m_bIsSending = false;
-	}
 };
 
 class cTCPSocketServer
@@ -193,12 +63,16 @@ private:
 	int m_iRunningMode;							//동작 모드
 
 public:
-	cTCPSocketServer()//생성자
+
+	/// <summary>
+	/// 생성자
+	/// </summary>
+	cTCPSocketServer()
 	{
 		m_iRunningMode = 0;
 		m_pWorkThread = nullptr;	//수신 스레드
 		m_iStatus = eTHREAD_STATUS_IDLE;//상태
-		m_bIsBlackList = false;
+		m_bIsBlackList = true;		//블랙리스트
 		m_iMaxConnectSocket = _MAX_TCP_CLIENT_COUNT;	//최대 연결 가능한 소켓 수
 		m_iConnectedSocketCount = 0;					//현재 연결되어있는 소켓 수
 
@@ -210,7 +84,10 @@ public:
 		}
 	};
 
-	~cTCPSocketServer()//소멸자
+	/// <summary>
+	/// 소멸자
+	/// </summary>
+	~cTCPSocketServer()
 	{
 		stop();
 	}
@@ -228,6 +105,10 @@ private:
 	/// </summary>
 	void workThread();
 
+	/// <summary>
+	/// 연결 즉시 종료
+	/// </summary>
+	/// <param name="_Socket">연결 종료 할 소켓 인덱스</param>
 	void disconnectNow(SOCKET _Socket)
 	{
 		shutdown(_Socket, SD_SEND);
@@ -239,8 +120,9 @@ public:
 	/// <summary>
 	/// 서버 시작
 	/// </summary>
-	/// <param name="_iTick">처리 틱 간격(ms)</param>
 	/// <param name="_iPort">포트(기본 58326)</param>
+	/// <param name="_bUseNoDelay">IPv4 IPv6 선택eWINSOCK_USE_IPv4 / eWINSOCK_USE_IPv6 / eWINSOCK_USE_BOTH</param>
+	/// <param name="_iTick">처리 틱 간격(ms)</param>
 	/// <param name="_iTimeOut">타임아웃 옵션</param>
 	/// <param name="_bUseNoDelay">노딜레이 옵션</param>
 	bool begin(const char* _csPort = _DEFAULT_PORT, int _iMode = eWINSOCK_USE_BOTH, int _iTick = _DEFAULT_TICK, int _iTimeOut = _DEFAULT_TIME_OUT, bool _bUseNoDelay = false);
@@ -260,7 +142,7 @@ public:
 		if (m_iConnectedSocketCount >= m_iMaxConnectSocket)
 			return nullptr;
 
-		mAMTX(m_mtxClientMutex);
+		mLG(m_mtxClientMutex);
 
 		//사용자가 나가서 반환된 인덱스 재사용
 		int iIndex = m_iLastConnectIndex;
@@ -299,7 +181,7 @@ public:
 		if (_iIndex >= m_iMaxConnectSocket)
 			return;
 
-		mAMTX(m_mtxClientMutex);
+		mLG(m_mtxClientMutex);
 		--m_iConnectedSocketCount;
 		m_vecClient[_iIndex]->setNotUse();
 		m_qDisconnectedIndex.push_back(_iIndex);
@@ -357,7 +239,7 @@ public:
 	/// <param name="_lpData">데이터</param>
 	inline void sendPacket(int _iIndex, int _iSize, char* _lpData)
 	{
-		mAMTX(m_mtxClientMutex);
+		mLG(m_mtxClientMutex);
 		cTCPClient* lpClient = getClient(_iIndex);
 		if (!lpClient)
 			return;
@@ -375,7 +257,7 @@ public:
 		if(m_qRecvQueue.empty())
 			return false;
 
-		mAMTX(m_mtxRecvMutex);
+		mLG(m_mtxRecvMutex);
 		_lpQueue->insert(_lpQueue->end(), m_qRecvQueue.begin(), m_qRecvQueue.end());
 
 		if(_bFlush)
@@ -393,7 +275,7 @@ public:
 		if(m_qRecvQueue.empty())
 			return false;
 
-		mAMTX(m_mtxRecvMutex);
+		mLG(m_mtxRecvMutex);
 		std::swap(m_qRecvQueue, *_lpQueue);
 		return true;
 	}
@@ -401,10 +283,18 @@ public:
 	/// <summary>
 	/// 블랙리스트로 설정
 	/// </summary>
-	/// <param name="_bIsBlackList">블랙리스트인지, false면 화이트 리스트(기본 true)</param>
-	inline void setBlackList(bool _bIsBlackList = true)
+	inline void setBlackList()
 	{
 		m_bIsBlackList = true;
+	}
+
+	/// <summary>
+	/// 블랙리스트로 설정
+	/// </summary>
+	/// <param name="_bIsBlackList">블랙리스트인지, false면 화이트 리스트(기본 true)</param>
+	inline void setWhiteList()
+	{
+		m_bIsBlackList = false;
 	}
 
 	/// <summary>
@@ -413,7 +303,7 @@ public:
 	/// <param name="_lpIP">대상 IP</param>
 	inline void addBWList(std::string* _lpIP)
 	{
-		mAMTX(m_mtxBWListMutex);
+		mLG(m_mtxBWListMutex);
 		m_setBWList.insert(*_lpIP);
 	}
 
@@ -423,7 +313,7 @@ public:
 	/// <param name="_lpIP">대상 IP</param>
 	inline void removeBWList(std::string* _lpIP)
 	{
-		mAMTX(m_mtxBWListMutex);
+		mLG(m_mtxBWListMutex);
 		m_setBWList.erase(*_lpIP);
 	}
 };
