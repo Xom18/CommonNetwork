@@ -36,8 +36,8 @@ struct stPacketMessage : stPacketBase
 };
 #pragma pack(pop)
 
-cTCPSocket g_TCPClient;	//클라
-void recvThread(cTCPSocket* _lpClient);
+cTCPClient g_TCPClient;	//클라
+void recvThread(cTCPClient* _lpClient);
 int main()
 {
 	std::string strIP;
@@ -73,7 +73,7 @@ int main()
 	RecvThread.join();
 }
 
-void recvThread(cTCPSocket* _lpClient)
+void recvThread(cTCPClient* _lpClient)
 {
 	std::deque<cPacketTCP*> qRecvQueue;
 	while(_lpClient->getSocketStatus() == eTHREAD_STATUS_RUN)

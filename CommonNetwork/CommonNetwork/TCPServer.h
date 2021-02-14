@@ -1,6 +1,6 @@
 #pragma once
 
-#include "TCPClient.h"
+#include "TCPSClient.h"
 //TCP 통신 서버 처리 하는곳
 //TCP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
 
@@ -27,7 +27,7 @@ enum
 	eTCP_TypeCount,
 };
 
-class cTCPSocketServer
+class cTCPServer
 {
 private:
 	std::mutex m_mtxRecvMutex;					//수신 뮤텍스
@@ -43,7 +43,7 @@ private:
 
 	int		m_iMaxConnectSocket;				//최대 연결 가능한 소켓 수
 	int		m_iConnectedSocketCount;			//이미 연결 된 소켓 수
-	std::vector<cTCPClient*> m_vecClient;		//연결 되 있는 클라이언트
+	std::vector<cTCPSClient*> m_vecClient;		//연결 되 있는 클라이언트
 
 	int		m_iLastConnectIndex;				//마지막 연결 인덱스
 	std::deque<int> m_qDisconnectedIndex;		//반환된 마지막 연결 인덱스
@@ -67,7 +67,7 @@ public:
 	/// <summary>
 	/// 생성자
 	/// </summary>
-	cTCPSocketServer()
+	cTCPServer()
 	{
 		m_iRunningMode = 0;
 		m_pWorkThread = nullptr;	//수신 스레드
@@ -87,7 +87,7 @@ public:
 	/// <summary>
 	/// 소멸자
 	/// </summary>
-	~cTCPSocketServer()
+	~cTCPServer()
 	{
 		stop();
 	}
@@ -136,7 +136,7 @@ public:
 	/// 신규 클라이언트 추가, 포인터 반환
 	/// </summary>
 	/// <returns>클라이언트 포인터</returns>
-	cTCPClient* addNewClient()
+	cTCPSClient* addNewClient()
 	{
 		//정원초과
 		if (m_iConnectedSocketCount >= m_iMaxConnectSocket)
@@ -161,7 +161,7 @@ public:
 		//해당 인덱스에 할당되있는게 없으면 할당
 		if(m_vecClient[iIndex] == nullptr)
 		{
-			cTCPClient* pNewClient = new cTCPClient();
+			cTCPSClient* pNewClient = new cTCPSClient();
 			pNewClient->setIndex(iIndex);
 			m_vecClient[iIndex] = pNewClient;
 		}
@@ -192,7 +192,7 @@ public:
 	/// </summary>
 	/// <param name="_iIndex">클라이언트 인덱스</param>
 	/// <returns>클라이언트 포인터</returns>
-	cTCPClient* getClient(int _iIndex)
+	cTCPSClient* getClient(int _iIndex)
 	{
 		if (_iIndex >= m_iMaxConnectSocket)
 			return nullptr;
@@ -240,7 +240,7 @@ public:
 	inline void sendPacket(int _iIndex, int _iSize, char* _lpData)
 	{
 		mLG(m_mtxClientMutex);
-		cTCPClient* lpClient = getClient(_iIndex);
+		cTCPSClient* lpClient = getClient(_iIndex);
 		if (!lpClient)
 			return;
 

@@ -35,7 +35,7 @@ struct stPacketMessage : stPacketBase
 };
 #pragma pack(pop)
 
-cTCPSocketServer g_TCPServer;	//클라
+cTCPServer g_TCPServer;	//서버
 void recvThread();
 int main()
 {

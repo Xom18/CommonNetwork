@@ -10,9 +10,9 @@
 #include "Macro.h"
 #include "Define.h"
 #include "Packet.h"
-#include "TCPSocketServer.h"
+#include "TCPServer.h"
 
-void cTCPSocketServer::acceptThread(SOCKET _Socket)
+void cTCPServer::acceptThread(SOCKET _Socket)
 {
 	mLOG("Begin connectThread");
 	int ClientAddrLength = sizeof(unSOCKADDR_IN);
@@ -89,7 +89,7 @@ void cTCPSocketServer::acceptThread(SOCKET _Socket)
 		}
 
 		//클라이언트 할당
-		cTCPClient* lpClient = addNewClient();
+		cTCPSClient* lpClient = addNewClient();
 		if (lpClient == nullptr)
 		{
 			disconnectNow(Socket);
@@ -122,7 +122,7 @@ void cTCPSocketServer::acceptThread(SOCKET _Socket)
 
 // 수신 스레드
 // 패킷 가져오고 전역패킷 보내고 처리
-void cTCPSocketServer::workThread()
+void cTCPServer::workThread()
 {
 	mLOG("Begin operateThread\n");
 
@@ -134,7 +134,7 @@ void cTCPSocketServer::workThread()
 	LP_IO_DATA	lpOV;
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
-//		cTCPClient* lpClient = nullptr;
+//		cTCPSClient* lpClient = nullptr;
 		int iIndex = -1;
 
 		size_t szRecvSize = 0;
@@ -145,7 +145,7 @@ void cTCPSocketServer::workThread()
 			continue;
 
 		//여기서 연결 끊는걸 관리하기 때문에 mutex 안잡고 그냥씀
-		cTCPClient* lpClient = getClient(iIndex);
+		cTCPSClient* lpClient = getClient(iIndex);
 		if (lpClient == nullptr)
 			continue;
 
@@ -230,7 +230,7 @@ void cTCPSocketServer::workThread()
 }
 
 //스레드 시작
-bool cTCPSocketServer::begin(const char* _csPort, int _iMode, int _iTick, int _iTimeOut, bool _bUseNoDelay)
+bool cTCPServer::begin(const char* _csPort, int _iMode, int _iTick, int _iTimeOut, bool _bUseNoDelay)
 {
 	if(m_iStatus != eTHREAD_STATUS_IDLE)
 	{
@@ -335,7 +335,7 @@ bool cTCPSocketServer::begin(const char* _csPort, int _iMode, int _iTick, int _i
 }
 
 //스레드 정지
-void cTCPSocketServer::stop()
+void cTCPServer::stop()
 {
 	//스레드가 멈춰있으면 의미없으니 return
 	if(m_iStatus == eTHREAD_STATUS_IDLE

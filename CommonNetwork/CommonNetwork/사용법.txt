@@ -46,7 +46,7 @@ _ _iMode	: IPv4전용, IPv6전용, 둘 다 사용, 기본 eWINSOCK_USE_BOTH
 
 TCP 통신 - 클라이언트
 
-cTCPSocket 사용
+cTCPClient 사용
 1. bool tryConnectServer(const char* _csIP, const char* _csPort, int _iTimeOut, bool _bUseNoDelay);
 사용하여 스레드 시작
 - _csIP		: 서버 IP
@@ -75,7 +75,7 @@ cTCPSocket 사용
 
 TCP 통신 - 서버
 
-cTCPSocketServer 사용
+cTCPServer 사용
 
 1. bool begin(const char* _csPort, int _iMode, int _iTick, int _iTimeOut, bool _bUseNoDelay);
 사용하여 스레드 시작

@@ -13,5 +13,5 @@
 #include "Macro.h"
 #include "Packet.h"
 #include "UDPSocket.h"
-#include "TCPSocket.h"
-#include "TCPSocketServer.h"
+#include "TCPClient.h"
+#include "TCPServer.h"

@@ -151,20 +151,20 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="TCPSClient.cpp" />
     <ClCompile Include="TCPClient.cpp" />
-    <ClCompile Include="TCPSocket.cpp" />
-    <ClCompile Include="TCPSocketServer.cpp" />
+    <ClCompile Include="TCPServer.cpp" />
     <ClCompile Include="UDPSocket.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CommonNetwork.h" />
-    <ClInclude Include="TCPClient.h" />
+    <ClInclude Include="TCPSClient.h" />
     <ClInclude Include="Debug.h" />
     <ClInclude Include="Define.h" />
     <ClInclude Include="Macro.h" />
     <ClInclude Include="Packet.h" />
-    <ClInclude Include="TCPSocket.h" />
-    <ClInclude Include="TCPSocketServer.h" />
+    <ClInclude Include="TCPClient.h" />
+    <ClInclude Include="TCPServer.h" />
     <ClInclude Include="UDPSocket.h" />
   </ItemGroup>
   <ItemGroup>

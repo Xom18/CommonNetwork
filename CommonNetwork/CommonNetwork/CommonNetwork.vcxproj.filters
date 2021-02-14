@@ -29,14 +29,14 @@
     <ClCompile Include="UDPSocket.cpp">
       <Filter>소스 파일\UDPSocket</Filter>
     </ClCompile>
-    <ClCompile Include="TCPSocketServer.cpp">
+    <ClCompile Include="TCPServer.cpp">
       <Filter>소스 파일\TCPSocket\Server</Filter>
     </ClCompile>
-    <ClCompile Include="TCPSocket.cpp">
-      <Filter>소스 파일\TCPSocket\Client</Filter>
+    <ClCompile Include="TCPSClient.cpp">
+      <Filter>소스 파일\TCPSocket\Server</Filter>
     </ClCompile>
     <ClCompile Include="TCPClient.cpp">
-      <Filter>소스 파일\TCPSocket\Server</Filter>
+      <Filter>소스 파일\TCPSocket\Client</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -52,20 +52,20 @@
     <ClInclude Include="UDPSocket.h">
       <Filter>소스 파일\UDPSocket</Filter>
     </ClInclude>
-    <ClInclude Include="TCPSocketServer.h">
-      <Filter>소스 파일\TCPSocket\Server</Filter>
-    </ClInclude>
-    <ClInclude Include="TCPSocket.h">
-      <Filter>소스 파일\TCPSocket\Client</Filter>
-    </ClInclude>
     <ClInclude Include="Debug.h">
       <Filter>소스 파일\Common</Filter>
     </ClInclude>
     <ClInclude Include="CommonNetwork.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
-    <ClInclude Include="TCPClient.h">
+    <ClInclude Include="TCPServer.h">
       <Filter>소스 파일\TCPSocket\Server</Filter>
+    </ClInclude>
+    <ClInclude Include="TCPSClient.h">
+      <Filter>소스 파일\TCPSocket\Server</Filter>
+    </ClInclude>
+    <ClInclude Include="TCPClient.h">
+      <Filter>소스 파일\TCPSocket\Client</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
