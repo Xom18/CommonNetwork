@@ -354,7 +354,7 @@ void cTCPServer::stop()
 	KILL(m_pWorkThread);
 
 	//클라이언트 해제
-	for (int i = 0; i < m_vecClient.size(); ++i)
+	for (size_t i = 0; i < m_vecClient.size(); ++i)
 	{
 		if (m_vecClient[i] == nullptr)
 			continue;
