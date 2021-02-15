@@ -2,17 +2,6 @@
 //TCP 통신 서버 처리 하는곳
 //TCP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
 
-//연결
-//tryConnect->begin->recvThread(스레드), sendThread(스레드, 여기서 connectThread 해제)
-
-//송신
-//pushSend->sendThread(스레드)
-
-//수신
-//recvThread(스레드)->swapRecvQueue 또는 copyRecvQueue
-
-//연결종료
-//stop->stopThread(스레드)
 class cTCPClient
 {
 private:

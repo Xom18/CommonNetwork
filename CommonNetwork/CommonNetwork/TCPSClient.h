@@ -3,7 +3,6 @@
 /// <summary>
 /// TCPSocketServer에서 include해서 사용하기때문에 다른곳에서 include 해서 쓰지 말것
 /// </summary>
-
 class cTCPSClient
 {
 private:

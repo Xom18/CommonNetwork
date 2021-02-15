@@ -4,22 +4,6 @@
 //TCP 통신 서버 처리 하는곳
 //TCP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
 
-//시작
-//begin->connectThread(스레드), operateThread(스레드)
-
-//연결
-//connectThread(스레드)->cTCPSocket 동적할당->setSocket->begin->
-
-//송신
-//sendAll->연결되있는 TCPSocket들에 pushSend->sendThread(스레드)->
-//sendTarget->특정 대상 TCPSocket에 pushSend->sendThread(스레드)->
-
-//수신
-//recvThread(스레드)->swapRecvQueue 또는 copyRecvQueue
-
-//연결종료
-//stop
-
 enum
 {
 	eTCP_IPv4 = 0,
