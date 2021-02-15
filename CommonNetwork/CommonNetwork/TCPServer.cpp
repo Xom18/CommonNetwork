@@ -12,6 +12,43 @@
 #include "Packet.h"
 #include "TCPServer.h"
 
+cTCPSClient* cTCPServer::addNewClient()
+{
+	//정원초과
+	if (m_iConnectedSocketCount >= m_iMaxConnectSocket)
+		return nullptr;
+
+	mLG(m_mtxClientMutex);
+
+	//사용자가 나가서 반환된 인덱스 재사용
+	int iIndex = m_iLastConnectIndex;
+	if (!m_qDisconnectedIndex.empty())
+	{
+		iIndex = m_qDisconnectedIndex.front();
+		m_qDisconnectedIndex.pop_front();
+	}
+	else
+	{
+		++m_iLastConnectIndex;
+	}
+
+	++m_iConnectedSocketCount;
+
+	//해당 인덱스에 할당되있는게 없으면 할당
+	if (m_vecClient[iIndex] == nullptr)
+	{
+		cTCPSClient* pNewClient = new cTCPSClient();
+		pNewClient->setIndex(iIndex);
+		m_vecClient[iIndex] = pNewClient;
+	}
+
+	if (m_vecClient[iIndex]->isUse())
+		return nullptr;
+
+	m_vecClient[iIndex]->setUse();
+	return m_vecClient[iIndex];
+}
+
 void cTCPServer::acceptThread(SOCKET _Socket)
 {
 	mLOG("Begin connectThread");
@@ -134,7 +171,6 @@ void cTCPServer::workThread()
 	LP_IO_DATA	lpOV;
 	while(m_iStatus == eTHREAD_STATUS_RUN)
 	{
-//		cTCPSClient* lpClient = nullptr;
 		int iIndex = -1;
 
 		size_t szRecvSize = 0;
@@ -194,6 +230,10 @@ void cTCPServer::workThread()
 
 					//이대로 읽으면 패킷 크기를 넘는다
 					if (szSplitSize + lpPacketInfo->m_iSize > szRecvSize)
+						break;
+
+					//패킷 유효성 검사
+					if (!packetValidityCheck(lpPacketInfo))
 						break;
 
 					cPacketTCP* pRecvPacket = new cPacketTCP();

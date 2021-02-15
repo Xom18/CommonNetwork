@@ -99,6 +99,20 @@ private:
 		closesocket(_Socket);
 	}
 
+protected:
+
+	/// <summary>
+	/// 패킷 유효성 검사
+	/// 본격적인 게임 처리로 가기전에 처리하는 부분이라 패킷 크기 초과나
+	/// 정상적인 절차중인지(로그인 전인대 로그인 이외의 패킷 보내거나 그런거)만 확인
+	/// </summary>
+	/// <param name="_lpPacket">패킷</param>
+	/// <returns>정상패킷 true 아니면 false</returns>
+	virtual bool packetValidityCheck(stPacketBase* _lpPacket)
+	{
+		return true;
+	}
+
 public:
 
 	/// <summary>
@@ -120,42 +134,7 @@ public:
 	/// 신규 클라이언트 추가, 포인터 반환
 	/// </summary>
 	/// <returns>클라이언트 포인터</returns>
-	cTCPSClient* addNewClient()
-	{
-		//정원초과
-		if (m_iConnectedSocketCount >= m_iMaxConnectSocket)
-			return nullptr;
-
-		mLG(m_mtxClientMutex);
-
-		//사용자가 나가서 반환된 인덱스 재사용
-		int iIndex = m_iLastConnectIndex;
-		if (!m_qDisconnectedIndex.empty())
-		{
-			iIndex = m_qDisconnectedIndex.front();
-			m_qDisconnectedIndex.pop_front();
-		}
-		else
-		{
-			++m_iLastConnectIndex;
-		}
-
-		++m_iConnectedSocketCount;
-
-		//해당 인덱스에 할당되있는게 없으면 할당
-		if(m_vecClient[iIndex] == nullptr)
-		{
-			cTCPSClient* pNewClient = new cTCPSClient();
-			pNewClient->setIndex(iIndex);
-			m_vecClient[iIndex] = pNewClient;
-		}
-
-		if (m_vecClient[iIndex]->isUse())
-			return nullptr;
-
-		m_vecClient[iIndex]->setUse();
-		return m_vecClient[iIndex];
-	}
+	cTCPSClient* addNewClient();
 
 	/// <summary>
 	/// 해당 인덱스의 클라이언트 삭제
