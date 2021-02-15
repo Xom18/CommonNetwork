@@ -7,12 +7,13 @@
 class cTCPSClient
 {
 private:
+	std::mutex m_mtxClient;					//얘 자체 뮤텍스
+
 	bool	m_bIsUse;						//사용중인지
 	int		m_iIndex;						//인덱스
 	SOCKET	m_Sock;							//소켓
 	unSOCKADDR_IN m_SockInfo;				//소켓 정보
 
-	std::mutex m_mtxSendMutex;				//송신 뮤텍스
 	std::deque<cPacketTCP*>	m_qSendQueue;	//송신 큐
 
 	IO_DATA	m_RecvOL;						//수신 OL
@@ -26,10 +27,10 @@ private:
 
 	/// <summary>
 	/// 송신 큐 초기화
+	/// 락 잡지 않습니다, 반드시 락 거는곳에서 호출 필요
 	/// </summary>
 	void resetSendQueue()
 	{
-		mLG(m_mtxSendMutex);
 		while (!m_qSendQueue.empty())
 		{
 			cPacketTCP* pPacket = m_qSendQueue.front();
@@ -93,6 +94,7 @@ public:
 	/// </summary>
 	void setUse()
 	{
+		mLG(m_mtxClient);
 		resetSendQueue();
 		m_bIsUse = true;
 		m_bIsSending = false;
@@ -103,6 +105,7 @@ public:
 	/// </summary>
 	void setNotUse()
 	{
+		mLG(m_mtxClient);
 		resetSendQueue();
 		m_bIsUse = false;
 		m_bIsSending = false;
@@ -185,12 +188,4 @@ public:
 	/// <param name="_iSize">패킷 크기</param>
 	/// <param name="_lpData">패킷</param>
 	void addSendPacket(int _iSize, const char* _lpData);
-
-	/// <summary>
-	/// 송신상태 종료
-	/// </summary>
-	void setSendFinish()
-	{
-		m_bIsSending = false;
-	}
 };

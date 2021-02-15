@@ -30,16 +30,19 @@ bool cTCPSClient::recvPacket()
 //전송 대기중인 다음 패킷 가져오는거
 bool cTCPSClient::pullNextPacket()
 {
+	mLG(m_mtxClient);
+
 	cPacketTCP* pPacket = nullptr;
 
+	if (m_qSendQueue.empty())
 	{
-		mLG(m_mtxSendMutex);
-		if (m_qSendQueue.empty())
-			return false;
-
-		pPacket = m_qSendQueue.front();
-		m_qSendQueue.pop_front();
+		m_bIsSending = false;
+		return false;
 	}
+
+	pPacket = m_qSendQueue.front();
+	m_qSendQueue.pop_front();
+
 	m_SendOL.sendlen = pPacket->m_iSize;
 	memcpy(m_SendOL.Buffer, pPacket->m_pData, pPacket->m_iSize);
 	delete pPacket;
@@ -48,6 +51,8 @@ bool cTCPSClient::pullNextPacket()
 }
 void cTCPSClient::addSendPacket(int _iSize, const char* _lpData)
 {
+	mLG(m_mtxClient);
+
 	//사용중이지 않음
 	if (!m_bIsUse)
 		return;
@@ -58,11 +63,12 @@ void cTCPSClient::addSendPacket(int _iSize, const char* _lpData)
 		cPacketTCP* pNewPacket = new cPacketTCP();
 		pNewPacket->setData(_iSize, _lpData);
 
-		mLG(m_mtxSendMutex);
 		m_qSendQueue.push_back(pNewPacket);
 	}
 	else
 	{//송신중이 아니면 바로 전송시도
+		m_bIsSending = true;
+
 		memcpy(m_SendOL.Buffer, _lpData, _iSize);
 		m_SendOL.sendlen = _iSize;
 		sendPacket();

@@ -155,8 +155,6 @@ void cTCPServer::workThread()
 			//다음 패킷이 있으면 그거 전송 없으면 송신상태 종료
 			if (lpClient->pullNextPacket())
 				lpClient->sendPacket();
-			else
-				lpClient->setSendFinish();
 
 			continue;
 		}
