@@ -24,6 +24,9 @@
     <Filter Include="소스 파일\TCPSocket\Client">
       <UniqueIdentifier>{44fc447b-6914-4a94-82ad-536ba98f17ee}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ExampleProjectHeader">
+      <UniqueIdentifier>{12dda9bf-187b-430a-ac44-77899bce4255}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="UDPSocket.cpp">
@@ -66,6 +69,9 @@
     </ClInclude>
     <ClInclude Include="TCPClient.h">
       <Filter>소스 파일\TCPSocket\Client</Filter>
+    </ClInclude>
+    <ClInclude Include="ExamplePacket.h">
+      <Filter>ExampleProjectHeader</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
