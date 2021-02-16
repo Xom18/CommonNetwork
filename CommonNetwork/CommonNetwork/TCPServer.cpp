@@ -188,6 +188,14 @@ void cTCPServer::workThread()
 		//송신처리
 		if (lpOV->IOState == 1)
 		{
+			//무슨 사유인지 송신 실패는 연결끊김으로 봄
+			if(returnValue == FALSE)
+			{
+				disconnectNow(lpClient->getSocket());
+				deleteClient(lpClient->getIndex());
+				continue;
+			}
+
 			//다음 패킷이 있으면 그거 전송 없으면 송신상태 종료
 			if (lpClient->pullNextPacket())
 				lpClient->sendPacket();
