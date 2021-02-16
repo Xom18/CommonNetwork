@@ -33,11 +33,3 @@ union unSOCKADDR_IN
 	sockaddr_in IPv4;
 	sockaddr_in6 IPv6;
 };
-
-typedef struct _IO_DATA {
-	OVERLAPPED	OL;
-	WSABUF		buf;
-	DWORD		sendlen;
-	char		Buffer[_MAX_PACKET_SIZE];
-	int			IOState;	//	0 - recv , 1 - send
-}IO_DATA, * LP_IO_DATA;
