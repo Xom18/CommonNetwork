@@ -211,7 +211,7 @@ void cTCPClient::stopThread()
 	m_pSendThread->join();
 	m_pRecvThread->join();
 
-	shutdown(m_Sock, SD_SEND);
+	shutdown(m_Sock, SD_BOTH);
 	closesocket(m_Sock);
 
 	//변수 해제

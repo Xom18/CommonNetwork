@@ -256,7 +256,7 @@ void cTCPServer::workThread()
 			if (!lpClient->recvPacket())
 			{
 				deleteClient(lpClient->getIndex());
-				shutdown(lpClient->getSocket(), SD_SEND);
+				shutdown(lpClient->getSocket(), SD_BOTH);
 				closesocket(lpClient->getSocket());
 				continue;
 			}
