@@ -1,6 +1,17 @@
 #pragma once
 
 /// <summary>
+/// IOCP에 사용하기 위한 구조체
+/// </summary>
+typedef struct _IO_DATA {
+	OVERLAPPED	OL;
+	WSABUF		buf;						//버퍼 포인터 = Buffer
+	DWORD		sendlen;					//데이터 길이
+	char		Buffer[_MAX_PACKET_SIZE];	//패킷 버퍼
+	int			IOState;					//	0 - recv , 1 - send
+}IO_DATA, * LP_IO_DATA;
+
+/// <summary>
 /// TCPSocketServer에서 include해서 사용하기때문에 다른곳에서 include 해서 쓰지 말것
 /// </summary>
 class cTCPSClient
@@ -172,8 +183,19 @@ public:
 		return &m_SendOL;
 	}
 
-	bool recvPacket();	//수신
-	bool sendPacket();	//송신
+	/// <summary>
+	/// 패킷 수신대기로 넘기기
+	/// </summary>
+	/// <returns>성공 여부</returns>
+	bool recvPacket();
+
+	/// <summary>
+	/// 송신처리
+	/// 송신 시도만 여기서 성공했는지 확인 가능하고 그 이후로는
+	/// void cTCPServer::workThread() 쪽에서 실제로 송신에 성공했는지 별도로 확인해야됨
+	/// </summary>
+	/// <returns>성공 여부</returns>
+	bool sendPacket();
 
 	/// <summary>
 	/// 송신 대기중인 다음 패킷 송신할 수 있게 준비

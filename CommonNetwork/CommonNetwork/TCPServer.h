@@ -4,6 +4,21 @@
 //TCP 통신 서버 처리 하는곳
 //TCP는 서버와 클라이언트가 꽤 달라서 코드 분리했음
 
+//시작
+//begin->acceptThread(스레드), workThread(스레드)
+
+//연결
+//acceptThread(스레드)->addNewClient->IOCP 잡아주고 패킷 수신 시작
+
+//송신
+//sendPacket->해당 대상의 TCPSClient에 addSendPacket
+
+//수신
+//workThread(스레드)->swapRecvQueue 또는 copyRecvQueue
+
+//연결종료
+//stop
+
 enum
 {
 	eTCP_IPv4 = 0,
@@ -95,8 +110,46 @@ private:
 	/// <param name="_Socket">연결 종료 할 소켓 인덱스</param>
 	void disconnectNow(SOCKET _Socket)
 	{
-		shutdown(_Socket, SD_SEND);
+		shutdown(_Socket, SD_BOTH);
 		closesocket(_Socket);
+	}
+
+	/// <summary>
+	/// 신규 클라이언트 추가, 포인터 반환
+	/// </summary>
+	/// <returns>클라이언트 포인터</returns>
+	cTCPSClient* addNewClient();
+
+	/// <summary>
+	/// 해당 인덱스의 클라이언트 삭제
+	/// </summary>
+	void deleteClient(int _iIndex)
+	{
+		if (_iIndex >= m_iMaxConnectSocket)
+			return;
+
+		mLG(m_mtxClientMutex);
+		--m_iConnectedSocketCount;
+		m_vecClient[_iIndex]->setNotUse();
+		m_qDisconnectedIndex.push_back(_iIndex);
+	}
+
+	/// <summary>
+	/// 클라이언트 받아오기
+	/// </summary>
+	/// <param name="_iIndex">클라이언트 인덱스</param>
+	/// <returns>클라이언트 포인터</returns>
+	cTCPSClient* getClient(int _iIndex)
+	{
+		if (_iIndex >= m_iMaxConnectSocket)
+			return nullptr;
+
+		if (m_vecClient[_iIndex] == nullptr)
+			return nullptr;
+		if (m_vecClient[_iIndex]->getSocket() == INVALID_SOCKET
+			|| !m_vecClient[_iIndex]->isUse())
+			return nullptr;
+		return m_vecClient[_iIndex];
 	}
 
 protected:
@@ -131,44 +184,6 @@ public:
 	void stop();
 	
 	/// <summary>
-	/// 신규 클라이언트 추가, 포인터 반환
-	/// </summary>
-	/// <returns>클라이언트 포인터</returns>
-	cTCPSClient* addNewClient();
-
-	/// <summary>
-	/// 해당 인덱스의 클라이언트 삭제
-	/// </summary>
-	void deleteClient(int _iIndex)
-	{
-		if (_iIndex >= m_iMaxConnectSocket)
-			return;
-
-		mLG(m_mtxClientMutex);
-		--m_iConnectedSocketCount;
-		m_vecClient[_iIndex]->setNotUse();
-		m_qDisconnectedIndex.push_back(_iIndex);
-	}
-
-	/// <summary>
-	/// 클라이언트 받아오기
-	/// </summary>
-	/// <param name="_iIndex">클라이언트 인덱스</param>
-	/// <returns>클라이언트 포인터</returns>
-	cTCPSClient* getClient(int _iIndex)
-	{
-		if (_iIndex >= m_iMaxConnectSocket)
-			return nullptr;
-
-		if (m_vecClient[_iIndex] == nullptr)
-			return nullptr;
-		if (m_vecClient[_iIndex]->getSocket() == INVALID_SOCKET
-		|| !m_vecClient[_iIndex]->isUse())
-			return nullptr;
-		return m_vecClient[_iIndex];
-	}
-
-	/// <summary>
 	/// 최대 연결 가능한 클라이언트 수 설정
 	/// </summary>
 	void setMaxClientCount(int _iCount)
@@ -188,6 +203,7 @@ public:
 	/// <summary>
 	/// 소켓 정보 받아오는거
 	/// </summary>
+	/// <param name="_iSockType">IPv4, IPv6</param>
 	/// <returns>m_SockInfo</returns>
 	inline unSOCKADDR_IN getSockinfo(int _iSockType)
 	{
@@ -215,12 +231,14 @@ public:
 	/// </summary>
 	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
 	/// <param name="_bFlush">수신 큐 초기화 여부</param>
+	/// <returns>패킷 받아오는대 성공했는지</returns>
 	inline bool getRecvQueue(std::deque<cPacketTCP*>* _lpQueue, bool _bFlush = true)
 	{
+		mLG(m_mtxRecvMutex);
+
 		if(m_qRecvQueue.empty())
 			return false;
 
-		mLG(m_mtxRecvMutex);
 		_lpQueue->insert(_lpQueue->end(), m_qRecvQueue.begin(), m_qRecvQueue.end());
 
 		if(_bFlush)
@@ -235,10 +253,11 @@ public:
 	/// <param name="_lpQueue">복사 뜰 비어있는 queue 변수</param>
 	inline bool swapRecvQueue(std::deque<cPacketTCP*>* _lpQueue)
 	{
+		mLG(m_mtxRecvMutex);
+
 		if(m_qRecvQueue.empty())
 			return false;
 
-		mLG(m_mtxRecvMutex);
 		std::swap(m_qRecvQueue, *_lpQueue);
 		return true;
 	}
@@ -252,9 +271,8 @@ public:
 	}
 
 	/// <summary>
-	/// 블랙리스트로 설정
+	/// 화이트리스트로 설정
 	/// </summary>
-	/// <param name="_bIsBlackList">블랙리스트인지, false면 화이트 리스트(기본 true)</param>
 	inline void setWhiteList()
 	{
 		m_bIsBlackList = false;
